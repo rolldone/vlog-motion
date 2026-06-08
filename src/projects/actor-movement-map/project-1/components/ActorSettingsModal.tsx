@@ -12,6 +12,8 @@ type ActorSettingsModalProps = {
   actorSize: number
   actorBorder: 'none' | 'thin' | 'normal' | 'thick'
   actorAssets?: ActorAssets
+  actorSpeed: number
+  onChangeSpeed: (speed: number) => void
   backgroundId: string
   backgroundColor: string
   onChangeIcon: (icon: string | null) => void
@@ -59,6 +61,8 @@ export function ActorSettingsModal({
   actorSize,
   actorBorder,
   actorAssets,
+  actorSpeed,
+  onChangeSpeed,
   backgroundId,
   backgroundColor,
   onChangeIcon,
@@ -218,8 +222,24 @@ export function ActorSettingsModal({
 
         {/* ── Animation Tab ── */}
         {activeTab === 'animation' && (
-          <div className="space-y-3">
-            <p className="text-[10px] leading-relaxed text-slate-400">
+          <div className="space-y-3">            {/* speed control */}
+            <div>
+              <div className="mb-1.5 text-[10px] font-medium text-slate-400">Movement Speed</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 w-6">🐢</span>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={3}
+                  step={0.1}
+                  value={actorSpeed}
+                  onChange={(e) => onChangeSpeed(Number(e.target.value))}
+                  className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-200 accent-sky-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-sky-500"
+                />
+                <span className="text-[10px] text-slate-400 w-6">🐇</span>
+                <span className="w-10 rounded-md border border-slate-200 bg-slate-50 px-1 py-0.5 text-center font-mono text-[10px] text-slate-700">{actorSpeed.toFixed(1)}x</span>
+              </div>
+            </div>            <p className="text-[10px] leading-relaxed text-slate-400">
               Select a sprite for each actor animation state from the asset library.
             </p>
             {(['idle', 'walking', 'stop', 'finish'] as const).map((state) => {

@@ -127,6 +127,7 @@ export function MapCanvas() {
   const [actorSize, setActorSize] = useState<number>(32)
   const [actorBorder, setActorBorder] = useState<'none' | 'thin' | 'normal' | 'thick'>('normal')
   const [actorAssets, setActorAssets] = useState<ActorAssets>({})
+  const [actorSpeed, setActorSpeed] = useState<number>(1.0)
   const [actorState, setActorState] = useState<'idle' | 'walking' | 'stop' | 'finish'>('idle')
   const [isActorPickerOpen, setIsActorPickerOpen] = useState(false)
 
@@ -452,7 +453,7 @@ export function MapCanvas() {
       // No walking points — animate full path as before
       for (let i = 1; i < path.length; i++) {
         if (movementTokenRef.current !== token) return
-        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18 / actorSpeed, easing: 'ease-in-out' })
         activeAnimationRef.current = ctrl
         try { await ctrl.finished } catch { return }
       }
@@ -465,7 +466,7 @@ export function MapCanvas() {
       // Animate to first walking point, then pause
       for (let i = 1; i <= firstWpIdx; i++) {
         if (movementTokenRef.current !== token) return
-        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18 / actorSpeed, easing: 'ease-in-out' })
         activeAnimationRef.current = ctrl
         try { await ctrl.finished } catch { return }
       }
@@ -509,7 +510,7 @@ export function MapCanvas() {
       // No more walking points — animate to final destination
       for (let i = 1; i < remainingPath.length; i++) {
         if (movementTokenRef.current !== token) return
-        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18 / actorSpeed, easing: 'ease-in-out' })
         activeAnimationRef.current = ctrl
         try { await ctrl.finished } catch { return }
       }
@@ -523,7 +524,7 @@ export function MapCanvas() {
       // Animate to next walking point, then pause again
       for (let i = 1; i <= nextWpIdx; i++) {
         if (movementTokenRef.current !== token) return
-        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18 / actorSpeed, easing: 'ease-in-out' })
         activeAnimationRef.current = ctrl
         try { await ctrl.finished } catch { return }
       }
@@ -1122,7 +1123,7 @@ export function MapCanvas() {
       checkpoints,
       lines,
       mapPoints,
-      actor: { icon: actorIcon, shape: actorShape, size: actorSize, border: actorBorder, assets: actorAssets },
+      actor: { icon: actorIcon, shape: actorShape, size: actorSize, border: actorBorder, assets: actorAssets, speed: actorSpeed },
     }
     const json = JSON.stringify(data, null, 2)
     const safeName = name.trim().replace(/[^a-zA-Z0-9\-_ ]/g, '').replace(/\s+/g, '-').toLowerCase()
@@ -1153,6 +1154,7 @@ export function MapCanvas() {
       if (entry.actor.size) setActorSize(entry.actor.size)
       if (entry.actor.border) setActorBorder(entry.actor.border)
       if (entry.actor.assets) setActorAssets(entry.actor.assets)
+      if (entry.actor.speed) setActorSpeed(entry.actor.speed)
     }
     // Reset actor position to start of newly loaded data
     const newStart = entry.lines && entry.lines.length > 0
@@ -1321,7 +1323,7 @@ export function MapCanvas() {
 
     for (let i = 1; i < path.length; i++) {
       if (movementTokenRef.current !== token) return
-      const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.2, easing: 'ease-in-out' })
+      const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.2 / actorSpeed, easing: 'ease-in-out' })
       activeAnimationRef.current = ctrl
       try { await ctrl.finished } catch { return }
     }
@@ -2087,6 +2089,8 @@ export function MapCanvas() {
           actorSize={actorSize}
           actorBorder={actorBorder}
           actorAssets={actorAssets}
+          actorSpeed={actorSpeed}
+          onChangeSpeed={setActorSpeed}
           backgroundId={backgroundId}
           backgroundColor={backgroundColor}
           onChangeIcon={(icon) => setActorIcon(icon ?? undefined)}

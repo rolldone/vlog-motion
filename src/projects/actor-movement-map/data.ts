@@ -15,6 +15,7 @@ export type MapDataEntry = {
     size?: number
     border?: 'none' | 'thin' | 'normal' | 'thick'
     assets?: ActorAssets
+    speed?: number
   }
 }
 
@@ -24,6 +25,6 @@ import hartaKarun from './assets/datas/harta-karun.json'
 
 // ── Register available map data here ──
 export const AVAILABLE_DATAS: MapDataEntry[] = [
-  { id: 'test', label: 'Test Map', ...(testData as Omit<MapDataEntry, 'id' | 'label'>) },
-  { id: 'harta_karun', label: 'Harta Karun', ...(hartaKarun as Omit<MapDataEntry, 'id' | 'label'>) },
+  { id: 'test', label: 'Test Map', ...(testData as unknown as Omit<MapDataEntry, 'id' | 'label'>) },
+  { id: 'harta_karun', label: 'Harta Karun', ...(hartaKarun as unknown as unknown as Omit<MapDataEntry, 'id' | 'label'>) },
 ]
