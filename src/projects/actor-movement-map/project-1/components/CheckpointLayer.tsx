@@ -6,6 +6,7 @@ type CheckpointLayerProps = {
   activeCheckpointId: 'start' | string
   isEditorEnabled: boolean
   highlightedCheckpointId?: string | null
+  selectedCheckpointId?: string | null
   onOpenCheckpointMenu: (checkpoint: Checkpoint) => void
   onSelectCheckpoint: (checkpoint: Checkpoint) => void
 }
@@ -15,6 +16,7 @@ export function CheckpointLayer({
   activeCheckpointId,
   isEditorEnabled,
   highlightedCheckpointId,
+  selectedCheckpointId,
   onOpenCheckpointMenu,
   onSelectCheckpoint,
 }: CheckpointLayerProps) {
@@ -23,6 +25,7 @@ export function CheckpointLayer({
       {checkpoints.map((checkpoint) => {
         const isActive = activeCheckpointId === checkpoint.id
         const isHighlighted = highlightedCheckpointId === checkpoint.id
+        const isSelected = selectedCheckpointId === checkpoint.id
         const shape = checkpoint.shape ?? 'circle'
         const size = checkpoint.size ?? 32
         const isNone = shape === 'none'
@@ -56,11 +59,13 @@ export function CheckpointLayer({
                 isNone
                   ? 'rounded-md bg-transparent border-0'
                   : `${getShapeClass(shape)} ${getBorderClass(checkpoint.border)} ${
-                      isHighlighted
-                        ? 'text-white border-blue-300 bg-blue-500 ring-4 ring-blue-100'
-                        : isActive
-                          ? 'text-white border-white bg-sky-500 ring-4 ring-sky-100'
-                          : 'text-white border-white bg-sky-600 hover:bg-sky-500'
+                      isSelected
+                        ? 'text-white border-amber-400 bg-amber-500 ring-4 ring-amber-200 animate-pulse'
+                        : isHighlighted
+                          ? 'text-white border-blue-300 bg-blue-500 ring-4 ring-blue-100'
+                          : isActive
+                            ? 'text-white border-white bg-sky-500 ring-4 ring-sky-100'
+                            : 'text-white border-white bg-sky-600 hover:bg-sky-500'
                     }`
               }`}
               style={{ ...getSizeStyle(size), fontSize: Math.round(size * 0.38) }}

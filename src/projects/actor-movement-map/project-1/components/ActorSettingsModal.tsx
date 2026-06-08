@@ -1,20 +1,24 @@
 import { useState } from 'react'
 import { CHECKPOINT_ICONS } from './IconPicker'
 import { BACKGROUND_LIST } from '../backgrounds'
+import { ACTOR_SPRITE_LIST } from '../actorAssets'
+import type { ActorAssets } from '../types'
 
-type Tab = 'actor' | 'background'
+type Tab = 'actor' | 'animation' | 'background'
 
 type ActorSettingsModalProps = {
   actorIcon?: string
   actorShape: 'circle' | 'square' | 'rounded' | 'diamond' | 'none'
   actorSize: number
   actorBorder: 'none' | 'thin' | 'normal' | 'thick'
+  actorAssets?: ActorAssets
   backgroundId: string
   backgroundColor: string
   onChangeIcon: (icon: string | null) => void
   onChangeShape: (shape: 'circle' | 'square' | 'rounded' | 'diamond' | 'none') => void
   onChangeSize: (size: number) => void
   onChangeBorder: (border: 'none' | 'thin' | 'normal' | 'thick') => void
+  onChangeAssets: (patch: Partial<ActorAssets>) => void
   onChangeBackground: (id: string) => void
   onChangeBackgroundColor: (color: string) => void
   onClose: () => void
@@ -54,12 +58,14 @@ export function ActorSettingsModal({
   actorShape,
   actorSize,
   actorBorder,
+  actorAssets,
   backgroundId,
   backgroundColor,
   onChangeIcon,
   onChangeShape,
   onChangeSize,
   onChangeBorder,
+  onChangeAssets,
   onChangeBackground,
   onChangeBackgroundColor,
   onClose,
@@ -93,6 +99,7 @@ export function ActorSettingsModal({
         <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
           {([
             { id: 'actor' as const, label: '🎭 Actor' },
+            { id: 'animation' as const, label: '🎬 Animation' },
             { id: 'background' as const, label: '🎨 Background' },
           ]).map((tab) => (
             <button
@@ -209,6 +216,51 @@ export function ActorSettingsModal({
           </>
         )}
 
+        {/* ── Animation Tab ── */}
+        {activeTab === 'animation' && (
+          <div className="space-y-3">
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              Select a sprite for each actor animation state from the asset library.
+            </p>
+            {(['idle', 'walking', 'stop', 'finish'] as const).map((state) => {
+              const info = STATE_LABELS[state]
+              const currentValue = actorAssets?.[state] ?? ''
+              const matchedSprite = ACTOR_SPRITE_LIST.find((s) => s.id === currentValue)
+              return (
+                <div key={state} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                  {/* preview */}
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                    {matchedSprite ? (
+                      <img src={matchedSprite.src} alt={info.label} className="h-full w-full object-contain p-0.5" />
+                    ) : (
+                      <span className="text-lg">{info.emoji}</span>
+                    )}
+                  </div>
+                  {/* info + dropdown */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-slate-700">{info.label}</span>
+                      <span className="text-[9px] text-slate-400">— {info.desc}</span>
+                    </div>
+                    <div className="mt-1">
+                      <select
+                        value={currentValue}
+                        onChange={(e) => onChangeAssets({ [state]: e.target.value || undefined })}
+                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[11px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                      >
+                        <option value="">— None —</option>
+                        {ACTOR_SPRITE_LIST.map((sprite) => (
+                          <option key={sprite.id} value={sprite.id}>{sprite.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* ── Background Tab ── */}
         {activeTab === 'background' && (
           <>
@@ -274,4 +326,13 @@ export function ActorSettingsModal({
       </div>
     </div>
   )
+}
+
+// ── State labels for animation states ──
+
+const STATE_LABELS: Record<string, { label: string; emoji: string; desc: string }> = {
+  idle: { label: 'Idle', emoji: '🧍', desc: 'Standing still, waiting' },
+  walking: { label: 'Walking', emoji: '🚶', desc: 'Moving between points' },
+  stop: { label: 'Stop', emoji: '✋', desc: 'Brief stop at checkpoint' },
+  finish: { label: 'Finish', emoji: '🏁', desc: 'Arrived at final destination' },
 }

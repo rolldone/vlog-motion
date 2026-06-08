@@ -11,6 +11,8 @@ export type Line = {
   width?: number
   opacity?: number
   glow?: boolean
+  /** Invisible waypoints between checkpoints for actor step-by-step movement */
+  walkingPoints?: WalkingPoint[]
 }
 
 export type MapPoint = {
@@ -18,6 +20,26 @@ export type MapPoint = {
   x: number
   y: number
   label: string
+}
+
+/** Actor animation states */
+export type ActorState = 'idle' | 'walking' | 'stop' | 'finish'
+
+/** Invisible intermediate waypoint between checkpoints on a line */
+export type WalkingPoint = {
+  id: string
+  lineId: string
+  /** Resolved x,y coordinates (snapped to nearest line segment) */
+  x: number
+  y: number
+}
+
+/** Animation asset IDs (filenames) for each actor state, resolved via actorAssets.ts registry */
+export type ActorAssets = {
+  idle?: string
+  walking?: string
+  stop?: string
+  finish?: string
 }
 
 export type Checkpoint = Point & {
@@ -31,4 +53,6 @@ export type Checkpoint = Point & {
   /** Size in px (wrapper diameter). Default 32. */
   size?: number
   border?: 'none' | 'thin' | 'normal' | 'thick'
+  /** Actor state when arriving at this checkpoint (default: 'finish') */
+  actorState?: ActorState
 }

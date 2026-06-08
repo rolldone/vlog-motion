@@ -1,4 +1,4 @@
-import type { Checkpoint, Line, MapPoint } from './project-1/types'
+import type { ActorAssets, Checkpoint, Line, MapPoint, WalkingPoint } from './project-1/types'
 
 export type MapDataEntry = {
   id: string
@@ -8,11 +8,13 @@ export type MapDataEntry = {
   checkpoints: Checkpoint[]
   lines: Line[]
   mapPoints?: MapPoint[]
+  walkingPoints?: WalkingPoint[]
   actor?: {
     icon?: string
     shape?: 'circle' | 'square' | 'rounded' | 'diamond' | 'none'
     size?: number
     border?: 'none' | 'thin' | 'normal' | 'thick'
+    assets?: ActorAssets
   }
 }
 

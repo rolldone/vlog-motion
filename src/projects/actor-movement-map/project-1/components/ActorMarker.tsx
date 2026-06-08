@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
-import type { Point } from '../types'
+import type { Point, ActorState, ActorAssets } from '../types'
 import { getIconSrc, getShapeClass, getSizeStyle, getBorderClass } from './IconPicker'
+import { resolveActorAsset } from '../actorAssets'
 
 type ActorMarkerProps = {
   point: Point
@@ -8,13 +9,18 @@ type ActorMarkerProps = {
   shape?: 'circle' | 'square' | 'rounded' | 'diamond' | 'none'
   size?: number
   border?: 'none' | 'thin' | 'normal' | 'thick'
+  actorState?: ActorState
+  actorAssets?: ActorAssets
 }
 
 export const ActorMarker = forwardRef<HTMLDivElement, ActorMarkerProps>(function ActorMarker(
-  { point, icon, shape = 'circle', size = 32, border = 'normal' },
+  { point, icon, shape = 'circle', size = 32, border = 'normal', actorState, actorAssets },
   ref,
 ) {
-  const iconSrc = getIconSrc(icon)
+  // Resolve display icon: state-based asset (via registry) → default icon
+  const stateAssetSrc = actorState && actorAssets?.[actorState] ? resolveActorAsset(actorAssets[actorState]) : undefined
+  const displayIcon = stateAssetSrc ? undefined : icon  // if we have a sprite, skip the icon
+  const iconSrc = stateAssetSrc ?? getIconSrc(displayIcon)
   const isNone = shape === 'none'
   const isDiamond = shape === 'diamond'
   const hasIcon = !!iconSrc

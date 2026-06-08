@@ -1,10 +1,13 @@
-import type { Point, Line } from '../types'
+import type { Point, Line, WalkingPoint } from '../types'
 
 type RouteLayerProps = {
   lines: Line[]
   activeLineId: string | null
   selectedLineId: string | null
   highlightedLineId?: string | null
+  isEditorEnabled?: boolean
+  selectedWalkingPointId?: string | null
+  onSelectWalkingPoint?: (wp: WalkingPoint) => void
 }
 
 const buildPointsString = (points: Point[]) => points.map((p) => `${p.x},${p.y}`).join(' ')
@@ -15,7 +18,7 @@ const LINE_STYLE_MAP = {
   dotted: '1 2',
 }
 
-export function RouteLayer({ lines, activeLineId, selectedLineId, highlightedLineId }: RouteLayerProps) {
+export function RouteLayer({ lines, activeLineId, selectedLineId, highlightedLineId, isEditorEnabled, selectedWalkingPointId, onSelectWalkingPoint }: RouteLayerProps) {
   return (
     <svg
       className="pointer-events-none absolute inset-0 z-0 h-full w-full"
@@ -66,6 +69,26 @@ export function RouteLayer({ lines, activeLineId, selectedLineId, highlightedLin
           </g>
         )
       })}
+
+      {/* walking points — visible only in editor mode */}
+      {isEditorEnabled && lines.map((line) =>
+        (line.walkingPoints ?? []).map((wp) => {
+          const isSelected = wp.id === selectedWalkingPointId
+          return (
+            <g key={wp.id} style={{ pointerEvents: 'auto', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onSelectWalkingPoint?.(wp) }}>
+              <circle
+                cx={wp.x}
+                cy={wp.y}
+                r={0.8}
+                fill={isSelected ? '#f59e0b' : '#a78bfa'}
+                stroke={isSelected ? '#b45309' : '#7c3aed'}
+                strokeWidth={0.15}
+                strokeDasharray={isSelected ? undefined : '0.3 0.15'}
+              />
+            </g>
+          )
+        })
+      )}
     </svg>
   )
 }

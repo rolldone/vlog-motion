@@ -18,7 +18,7 @@ import { MapDataPicker } from './components/MapDataPicker'
 import { AVAILABLE_DATAS } from '../data'
 import { ActorSettingsModal } from './components/ActorSettingsModal'
 import { IconPicker } from './components/IconPicker'
-import type { Checkpoint, Point, Line, MapPoint } from './types'
+import type { Checkpoint, Point, Line, MapPoint, WalkingPoint, ActorAssets } from './types'
 
 const presetPoints: Point[] = [
   { x: 84, y: 63 },
@@ -70,6 +70,11 @@ export function MapCanvas() {
   const actorPosRef = useRef<Point>(
     initialLines.length > 0 ? initialLines[0].points[0] : presetPoints[0],
   )
+  const pendingMovementRef = useRef<{
+    remainingPath: Point[]
+    target: Checkpoint | 'start'
+    targetId: string
+  } | null>(null)
 
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
   const [lines, setLines] = useState<Line[]>([])
@@ -97,6 +102,7 @@ export function MapCanvas() {
   const [isDataPanelOpen, setIsDataPanelOpen] = useState(false)
   const [highlightedLineId, setHighlightedLineId] = useState<string | null>(null)
   const [highlightedCheckpointId, setHighlightedCheckpointId] = useState<string | null>(null)
+  const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null)
   const [pendingDrawConnectCp, setPendingDrawConnectCp] = useState<Checkpoint | null>(null)
   const [scrollAnchor, setScrollAnchor] = useState<Point | null>(null)
   const [scrollPos, setScrollPos] = useState({ left: 0, top: 0 })
@@ -120,7 +126,13 @@ export function MapCanvas() {
   const [actorShape, setActorShape] = useState<'circle' | 'square' | 'rounded' | 'diamond' | 'none'>('circle')
   const [actorSize, setActorSize] = useState<number>(32)
   const [actorBorder, setActorBorder] = useState<'none' | 'thin' | 'normal' | 'thick'>('normal')
+  const [actorAssets, setActorAssets] = useState<ActorAssets>({})
+  const [actorState, setActorState] = useState<'idle' | 'walking' | 'stop' | 'finish'>('idle')
   const [isActorPickerOpen, setIsActorPickerOpen] = useState(false)
+
+  // ── walking point state ──
+  const [selectedWalkingPointId, setSelectedWalkingPointId] = useState<string | null>(null)
+  const draggingWalkingPointRef = useRef<{ id: string; lineId: string } | null>(null)
 
   // ── background ──
   const defaultBg = BACKGROUND_LIST.length > 0 ? BACKGROUND_LIST[0].id : ''
@@ -164,6 +176,9 @@ export function MapCanvas() {
   useEffect(() => {
     setLines(initialLines)
     setCheckpoints(initialCheckpoints)
+    // Sync actorPosRef with the actual starting position
+    const start = initialLines.length > 0 ? initialLines[0].points[0] : presetPoints[0]
+    actorPosRef.current = start
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── CENTRAL checkpoint tracker ──────────────────────────
@@ -172,6 +187,32 @@ export function MapCanvas() {
     const entry = `[${new Date().toLocaleTimeString()}] CP:${checkpoints.length} [${checkpoints.map(c => c.label).join(',')}]`
     setCheckpointLog((prev) => [...prev.slice(-9), entry])
   }, [checkpoints])
+
+  // ── keyboard SPACE trigger ──────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      if (e.code === 'Space' || e.key === 'Enter') {
+        e.preventDefault()
+        // If paused at walking point, continue movement
+        if (pendingMovementRef.current) {
+          void continueMovement()
+          return
+        }
+        if (!selectedCheckpointId) return
+        const cp = checkpoints.find((c) => c.id === selectedCheckpointId)
+        if (cp) {
+          setSelectedCheckpointId(null)
+          void moveActorTo(cp)
+        }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedCheckpointId, checkpoints]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedLine = lines.find((l) => l.id === selectedLineId) ?? null
   const selectedPoint = selectedLine && selectedPointIndex != null
@@ -228,6 +269,101 @@ export function MapCanvas() {
     setPendingCheckpointLineId(null)
     setEditingCheckpointId(null)
     setCheckpointLabel('')
+    setSelectedWalkingPointId(null)
+    setSelectedCheckpointId(null)
+    pendingMovementRef.current = null
+  }
+
+  // ── walking point handlers ──────────────────────────────
+
+  /** Project point P onto line segment AB, return t parameter (0-1) and closest point */
+  const projectPointOnSegment = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+    const dx = bx - ax
+    const dy = by - ay
+    const lenSq = dx * dx + dy * dy
+    if (lenSq === 0) return { t: 0, x: ax, y: ay, dist: Math.hypot(px - ax, py - ay) }
+    let t = ((px - ax) * dx + (py - ay) * dy) / lenSq
+    t = Math.max(0, Math.min(1, t))
+    const cx = ax + t * dx
+    const cy = ay + t * dy
+    return { t, x: cx, y: cy, dist: Math.hypot(px - cx, py - cy) }
+  }
+
+  /** Find the best position along a line for a new walking point (midpoint of longest segment) */
+  const findBestInsertPosition = (line: Line): { x: number; y: number } => {
+    if (line.points.length < 2) return { x: line.points[0]?.x ?? 50, y: line.points[0]?.y ?? 50 }
+    let maxLen = 0
+    let bestMid = { x: (line.points[0].x + line.points[1].x) / 2, y: (line.points[0].y + line.points[1].y) / 2 }
+    for (let i = 0; i < line.points.length - 1; i++) {
+      const a = line.points[i]
+      const b = line.points[i + 1]
+      const len = Math.hypot(b.x - a.x, b.y - a.y)
+      if (len > maxLen) {
+        maxLen = len
+        bestMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+      }
+    }
+    return bestMid
+  }
+
+  /** Resolve a walking point's position along its line (re-project onto line path) */
+  const resolveWalkingPointPosition = (wp: WalkingPoint, line: Line): WalkingPoint => {
+    if (line.points.length < 2) return wp
+    // find closest segment
+    let bestDist = Infinity
+    let bestPos = { x: wp.x, y: wp.y }
+    for (let i = 0; i < line.points.length - 1; i++) {
+      const a = line.points[i]
+      const b = line.points[i + 1]
+      const result = projectPointOnSegment(wp.x, wp.y, a.x, a.y, b.x, b.y)
+      if (result.dist < bestDist) {
+        bestDist = result.dist
+        bestPos = { x: result.x, y: result.y }
+      }
+    }
+    return { ...wp, x: bestPos.x, y: bestPos.y }
+  }
+
+  const addWalkingPoint = (lineId: string) => {
+    const line = lines.find((l) => l.id === lineId)
+    if (!line || line.points.length < 2) return
+    const pos = findBestInsertPosition(line)
+    const wp: WalkingPoint = { id: `wp-${Date.now()}`, lineId, x: pos.x, y: pos.y }
+    setLines((prev) => prev.map((l) =>
+      l.id === lineId
+        ? { ...l, walkingPoints: [...(l.walkingPoints ?? []), wp] }
+        : l,
+    ))
+    setSelectedWalkingPointId(wp.id)
+  }
+
+  const deleteWalkingPoint = (wpId: string) => {
+    setLines((prev) => prev.map((l) => {
+      if (!l.walkingPoints) return l
+      const filtered = l.walkingPoints.filter((wp) => wp.id !== wpId)
+      return filtered.length === 0
+        ? { ...l, walkingPoints: undefined }
+        : { ...l, walkingPoints: filtered }
+    }))
+    if (selectedWalkingPointId === wpId) setSelectedWalkingPointId(null)
+  }
+
+  const moveWalkingPoint = (wpId: string, x: number, y: number) => {
+    setLines((prev) => prev.map((l) => {
+      if (!l.walkingPoints) return l
+      return {
+        ...l,
+        walkingPoints: l.walkingPoints.map((wp) =>
+          wp.id === wpId ? resolveWalkingPointPosition({ ...wp, x, y }, l) : wp,
+        ),
+      }
+    }))
+  }
+
+  /** Get walking point count for a specific line */
+  const getWalkingPointCount = (lineId: string): number => {
+    const line = lines.find((l) => l.id === lineId)
+    return line?.walkingPoints?.length ?? 0
   }
 
   const toggleEditorEnabled = () => {
@@ -235,6 +371,7 @@ export function MapCanvas() {
       const next = !prev
       if (!next) {
         closeEditorMenus()
+        setActorState('idle')
         // move actor back to start when exiting edit mode
         const el = actorRef.current
         if (el) {
@@ -249,20 +386,40 @@ export function MapCanvas() {
 
   // ── actor movement ─────────────────────────────────────
 
+  /** Collect all walking point keys from all lines */
+  const getWalkingPointKeys = (): Set<string> => {
+    const wpKeys = new Set<string>()
+    for (const line of lines) {
+      if (line.walkingPoints) {
+        for (const wp of line.walkingPoints) {
+          wpKeys.add(ptKey(wp))
+        }
+      }
+    }
+    return wpKeys
+  }
+
   const moveActorTo = async (target: Checkpoint | 'start') => {
     const el = actorRef.current
     if (!el) return
+
+    // Clear any pending segmented movement
+    pendingMovementRef.current = null
 
     const targetId = target === 'start' ? 'start' : target.id
     const targetPoint = target === 'start' ? startPoint : { x: target.x, y: target.y }
 
     if (actorPosRef.current.x === targetPoint.x && actorPosRef.current.y === targetPoint.y) {
+      if (target !== 'start') setActorState(target.actorState ?? 'finish')
+      else setActorState('idle')
       setActiveCheckpointId(targetId)
       return
     }
 
+    setActorState('walking')
     const path = findPathToPoint(targetPoint)
     if (!path || path.length <= 1) {
+      // no line path — direct jump
       movementTokenRef.current += 1
       const token = movementTokenRef.current
       activeAnimationRef.current?.cancel()
@@ -270,7 +427,10 @@ export function MapCanvas() {
       activeAnimationRef.current = ctrl
       try { await ctrl.finished } catch { return }
       actorPosRef.current = targetPoint
-      if (movementTokenRef.current === token) setActiveCheckpointId(targetId)
+      if (movementTokenRef.current === token) {
+        setActorState(target !== 'start' ? (target.actorState ?? 'finish') : 'idle')
+        setActiveCheckpointId(targetId)
+      }
       return
     }
 
@@ -278,15 +438,105 @@ export function MapCanvas() {
     const token = movementTokenRef.current
     activeAnimationRef.current?.cancel()
 
+    // Find first walking point in path (skip index 0 = start)
+    const wpKeys = getWalkingPointKeys()
+    let firstWpIdx = -1
     for (let i = 1; i < path.length; i++) {
-      if (movementTokenRef.current !== token) return
-      const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
-      activeAnimationRef.current = ctrl
-      try { await ctrl.finished } catch { return }
+      if (wpKeys.has(ptKey(path[i]))) {
+        firstWpIdx = i
+        break
+      }
     }
 
-    actorPosRef.current = path[path.length - 1]
-    if (movementTokenRef.current === token) setActiveCheckpointId(targetId)
+    if (firstWpIdx === -1) {
+      // No walking points — animate full path as before
+      for (let i = 1; i < path.length; i++) {
+        if (movementTokenRef.current !== token) return
+        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        activeAnimationRef.current = ctrl
+        try { await ctrl.finished } catch { return }
+      }
+      actorPosRef.current = path[path.length - 1]
+      if (movementTokenRef.current === token) {
+        setActorState(target !== 'start' ? (target.actorState ?? 'finish') : 'idle')
+        setActiveCheckpointId(targetId)
+      }
+    } else {
+      // Animate to first walking point, then pause
+      for (let i = 1; i <= firstWpIdx; i++) {
+        if (movementTokenRef.current !== token) return
+        const ctrl = animate(el, { left: `${path[i].x}%`, top: `${path[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        activeAnimationRef.current = ctrl
+        try { await ctrl.finished } catch { return }
+      }
+      actorPosRef.current = path[firstWpIdx]
+      if (movementTokenRef.current === token) {
+        // Save remaining path for later
+        pendingMovementRef.current = {
+          remainingPath: path.slice(firstWpIdx),
+          target,
+          targetId,
+        }
+        setActorState('stop')
+      }
+    }
+  }
+
+  const continueMovement = async () => {
+    const pending = pendingMovementRef.current
+    if (!pending) return
+    const el = actorRef.current
+    if (!el) return
+
+    const { remainingPath, target, targetId } = pending
+
+    movementTokenRef.current += 1
+    const token = movementTokenRef.current
+    activeAnimationRef.current?.cancel()
+    setActorState('walking')
+
+    // Find next walking point in remaining path (skip index 0 = current pos)
+    const wpKeys = getWalkingPointKeys()
+    let nextWpIdx = -1
+    for (let i = 1; i < remainingPath.length; i++) {
+      if (wpKeys.has(ptKey(remainingPath[i]))) {
+        nextWpIdx = i
+        break
+      }
+    }
+
+    if (nextWpIdx === -1) {
+      // No more walking points — animate to final destination
+      for (let i = 1; i < remainingPath.length; i++) {
+        if (movementTokenRef.current !== token) return
+        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        activeAnimationRef.current = ctrl
+        try { await ctrl.finished } catch { return }
+      }
+      actorPosRef.current = remainingPath[remainingPath.length - 1]
+      pendingMovementRef.current = null
+      if (movementTokenRef.current === token) {
+        setActorState(target !== 'start' ? (target.actorState ?? 'finish') : 'idle')
+        setActiveCheckpointId(targetId)
+      }
+    } else {
+      // Animate to next walking point, then pause again
+      for (let i = 1; i <= nextWpIdx; i++) {
+        if (movementTokenRef.current !== token) return
+        const ctrl = animate(el, { left: `${remainingPath[i].x}%`, top: `${remainingPath[i].y}%` }, { duration: 0.18, easing: 'ease-in-out' })
+        activeAnimationRef.current = ctrl
+        try { await ctrl.finished } catch { return }
+      }
+      actorPosRef.current = remainingPath[nextWpIdx]
+      if (movementTokenRef.current === token) {
+        pendingMovementRef.current = {
+          remainingPath: remainingPath.slice(nextWpIdx),
+          target,
+          targetId,
+        }
+        setActorState('stop')
+      }
+    }
   }
 
   // ── point operations ───────────────────────────────────
@@ -365,6 +615,38 @@ export function MapCanvas() {
     window.addEventListener('mouseup', onUp)
   }
 
+  // ── walking point drag ─────────────────────────────────
+
+  const isDraggingWpRef = useRef(false)
+
+  const onWalkingPointMouseDown = (e: React.MouseEvent, wp: WalkingPoint) => {
+    if (!isEditorEnabled || isPanMode) return
+    e.stopPropagation()
+    e.preventDefault()
+    draggingWalkingPointRef.current = { id: wp.id, lineId: wp.lineId }
+    setSelectedWalkingPointId(wp.id)
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const onMove = (ev: globalThis.MouseEvent) => {
+      if (!draggingWalkingPointRef.current) return
+      if (isDraggingWpRef.current == false) {
+        isDraggingWpRef.current = true
+      }
+      const rect = canvas.getBoundingClientRect()
+      const x = ((ev.clientX - rect.left) / rect.width) * 100
+      const y = ((ev.clientY - rect.top) / rect.height) * 100
+      moveWalkingPoint(draggingWalkingPointRef.current.id, x, y)
+    }
+    const onUp = () => {
+      draggingWalkingPointRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   // ── line draw / click ──────────────────────────────────
 
   /** Distance from point P to line segment AB (in % coords). Returns ~% distance. */
@@ -398,7 +680,11 @@ export function MapCanvas() {
   const openLinePoint = (event: MouseEvent<HTMLDivElement>) => {
     if (isPanMode) return
     if (!isEditorEnabled || isCheckpointModalOpen) return
-
+    if (isDraggingWpRef.current == true) {
+      isDraggingWpRef.current = false
+      return
+    }
+    isDraggingWpRef.current = false
     const rect = event.currentTarget.getBoundingClientRect()
     const point: Point = {
       x: ((event.clientX - rect.left) / rect.width) * 100,
@@ -564,6 +850,8 @@ export function MapCanvas() {
     setCheckpoints((prev) => prev.map((cp) => (cp.lineId === lineId ? { ...cp, lineId: '' } : cp)))
     if (activeLineId === lineId) setActiveLineId(null)
     if (selectedLineId === lineId) setSelectedLineId(null)
+    // clear selected walking point if it belonged to the deleted line
+    setSelectedWalkingPointId(null)
     closeEditorMenus()
   }
 
@@ -834,7 +1122,7 @@ export function MapCanvas() {
       checkpoints,
       lines,
       mapPoints,
-      actor: { icon: actorIcon, shape: actorShape, size: actorSize, border: actorBorder },
+      actor: { icon: actorIcon, shape: actorShape, size: actorSize, border: actorBorder, assets: actorAssets },
     }
     const json = JSON.stringify(data, null, 2)
     const safeName = name.trim().replace(/[^a-zA-Z0-9\-_ ]/g, '').replace(/\s+/g, '-').toLowerCase()
@@ -864,12 +1152,43 @@ export function MapCanvas() {
       if (entry.actor.shape) setActorShape(entry.actor.shape)
       if (entry.actor.size) setActorSize(entry.actor.size)
       if (entry.actor.border) setActorBorder(entry.actor.border)
+      if (entry.actor.assets) setActorAssets(entry.actor.assets)
     }
+    // Reset actor position to start of newly loaded data
+    const newStart = entry.lines && entry.lines.length > 0
+      ? entry.lines[0].points[0]
+      : presetPoints[0]
+    actorPosRef.current = newStart
+    const el = actorRef.current
+    if (el) {
+      animate(el, { left: `${newStart.x}%`, top: `${newStart.y}%` }, { duration: 0.3, easing: 'ease-in-out' })
+    }
+    setActorState('idle')
+    setActiveCheckpointId('start')
+    setSelectedCheckpointId(null)
+    pendingMovementRef.current = null
   }
 
   // ── map point animation ───────────────────────────────
 
   const ptKey = (p: Point) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`
+
+  /** Find which segment a walking point belongs to and its parameter t ∈ [0,1] */
+  const projectOnSegments = (wp: Point, segments: { a: Point; b: Point; idx: number }[]) => {
+    let best = { idx: 0, t: 0, dist: Infinity }
+    for (const seg of segments) {
+      const dx = seg.b.x - seg.a.x
+      const dy = seg.b.y - seg.a.y
+      const lenSq = dx * dx + dy * dy
+      let t = lenSq === 0 ? 0 : ((wp.x - seg.a.x) * dx + (wp.y - seg.a.y) * dy) / lenSq
+      t = Math.max(0, Math.min(1, t))
+      const px = seg.a.x + t * dx
+      const py = seg.a.y + t * dy
+      const dist = (wp.x - px) ** 2 + (wp.y - py) ** 2
+      if (dist < best.dist) best = { idx: seg.idx, t, dist }
+    }
+    return best
+  }
 
   const buildLineGraph = () => {
     const adj = new Map<string, string[]>()
@@ -881,8 +1200,45 @@ export function MapCanvas() {
       adj.get(b)!.push(a)
     }
     for (const line of lines) {
-      for (let i = 0; i < line.points.length - 1; i++) {
-        addEdge(ptKey(line.points[i]), ptKey(line.points[i + 1]))
+      const pts = line.points
+      if (pts.length < 2) continue
+
+      // Build segments for projection
+      const segments = pts.slice(0, -1).map((a, i) => ({ a, b: pts[i + 1], idx: i }))
+
+      // Group walking points by segment index, sorted by t
+      const wpBySegment = new Map<number, { wp: Point; t: number }[]>()
+      if (line.walkingPoints && line.walkingPoints.length > 0) {
+        for (const wp of line.walkingPoints) {
+          const proj = projectOnSegments(wp, segments)
+          const bucket = wpBySegment.get(proj.idx) ?? []
+          bucket.push({ wp, t: proj.t })
+          wpBySegment.set(proj.idx, bucket)
+        }
+        // Sort each bucket by t so walking points are in order along the segment
+        for (const bucket of wpBySegment.values()) {
+          bucket.sort((a, b) => a.t - b.t)
+        }
+      }
+
+      // Build edges: vertex[i] → (sorted walking points on segment i) → vertex[i+1]
+      for (let i = 0; i < pts.length - 1; i++) {
+        const chain = wpBySegment.get(i) ?? []
+        const prev = ptKey(pts[i])
+        const next = ptKey(pts[i + 1])
+        if (chain.length === 0) {
+          // No walking points — direct edge
+          addEdge(prev, next)
+        } else {
+          // vertex[i] → wp[0] → wp[1] → ... → vertex[i+1]
+          let current = prev
+          for (const { wp } of chain) {
+            const wpk = ptKey(wp)
+            addEdge(current, wpk)
+            current = wpk
+          }
+          addEdge(current, next)
+        }
       }
     }
     return adj
@@ -938,6 +1294,10 @@ export function MapCanvas() {
     const el = actorRef.current
     if (!el) return
 
+    // Clear any pending segmented movement
+    pendingMovementRef.current = null
+
+    setActorState('walking')
     const path = findPathToPoint(target)
     if (!path || path.length <= 1) {
       // no line path — direct jump
@@ -948,7 +1308,10 @@ export function MapCanvas() {
       activeAnimationRef.current = ctrl
       try { await ctrl.finished } catch { return }
       actorPosRef.current = target
-      if (movementTokenRef.current === token) setActiveCheckpointId('start')
+      if (movementTokenRef.current === token) {
+        setActorState('idle')
+        setActiveCheckpointId('start')
+      }
       return
     }
 
@@ -964,7 +1327,10 @@ export function MapCanvas() {
     }
 
     actorPosRef.current = path[path.length - 1]
-    if (movementTokenRef.current === token) setActiveCheckpointId('start')
+    if (movementTokenRef.current === token) {
+      setActorState('idle')
+      setActiveCheckpointId('start')
+    }
   }
 
   // ── map point menu ─────────────────────────────────────
@@ -1323,6 +1689,12 @@ export function MapCanvas() {
     setScrollAnchor({ x: cp.x, y: cp.y })
   }
 
+  /** Select checkpoint for animation — DataPanel click only highlights + scrolls */
+  const handleConfirmCheckpointAnim = (cp: Checkpoint) => {
+    setSelectedCheckpointId(cp.id)
+    setScrollAnchor({ x: cp.x, y: cp.y })
+  }
+
   // ── render ─────────────────────────────────────────────
 
   return (
@@ -1374,9 +1746,21 @@ export function MapCanvas() {
             activeLineId={activeLineId}
             selectedLineId={selectedLineId}
             highlightedLineId={highlightedLineId}
+            isEditorEnabled={isEditorEnabled}
+            selectedWalkingPointId={selectedWalkingPointId}
+            onSelectWalkingPoint={(wp) => setSelectedWalkingPointId(wp.id)}
           />
 
-          <ActorMarker ref={actorRef} point={isEditorEnabled ? { x: 95, y: 3 } : startPoint} icon={actorIcon} shape={actorShape} size={actorSize} border={actorBorder} />
+          <ActorMarker
+            ref={actorRef}
+            point={isEditorEnabled ? { x: 95, y: 3 } : startPoint}
+            icon={actorIcon}
+            shape={actorShape}
+            size={actorSize}
+            border={actorBorder}
+            actorState={actorState}
+            actorAssets={actorAssets}
+          />
 
           {/* scroll anchor (invisible, triggers scrollIntoView) */}
           {scrollAnchor ? (
@@ -1392,6 +1776,7 @@ export function MapCanvas() {
             activeCheckpointId={activeCheckpointId}
             isEditorEnabled={isEditorEnabled}
             highlightedCheckpointId={highlightedCheckpointId}
+            selectedCheckpointId={selectedCheckpointId}
             onOpenCheckpointMenu={openCheckpointMenu}
             onSelectCheckpoint={(cp) => {
               if (isPanMode) return
@@ -1426,6 +1811,34 @@ export function MapCanvas() {
               {mp.label}
             </button>
           ))}
+
+          {/* walking point markers — visible only in editor mode */}
+          {isEditorEnabled &&
+            lines.map((line) =>
+              (line.walkingPoints ?? []).map((wp) => {
+                const isWpSelected = selectedWalkingPointId === wp.id
+                return (
+                  <div key={wp.id} className="absolute z-[55]" style={{ left: `${wp.x}%`, top: `${wp.y}%` }}>
+                    <div
+                      className="flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center cursor-grab active:cursor-grabbing"
+                      onMouseDown={(e) => {
+                        if (!isEditorEnabled || isPanMode) return
+                        e.stopPropagation()
+                        e.preventDefault()
+                        onWalkingPointMouseDown(e, wp)
+                      }}
+                      title="Drag to move walking point"
+                    >
+                      <div className={`h-3.5 w-3.5 rounded-full border-2 transition ${
+                        isWpSelected
+                          ? 'border-amber-600 bg-amber-400 shadow-md shadow-amber-200'
+                          : 'border-purple-500 bg-purple-300 border-dashed hover:bg-purple-400'
+                      }`} />
+                    </div>
+                  </div>
+                )
+              })
+            )}
 
           {/* endpoint buttons for all lines */}
           {isEditorEnabled &&
@@ -1615,6 +2028,10 @@ export function MapCanvas() {
             onStartLine={startLineFromSelected}
             onAddPoint={addPointNearSelected}
             onCheckpoint={createCheckpointAtSelected}
+            onAddWalking={() => addWalkingPoint(selectedLineId)}
+            walkingPointCount={getWalkingPointCount(selectedLineId)}
+            walkingPoints={lines.find((l) => l.id === selectedLineId)?.walkingPoints}
+            onDeleteWalkingPoint={deleteWalkingPoint}
             onDeletePoint={deleteSelectedPoint}
             onDelete={deleteSelectedLine}
             onClose={closeLineMenu}
@@ -1669,12 +2086,14 @@ export function MapCanvas() {
           actorShape={actorShape}
           actorSize={actorSize}
           actorBorder={actorBorder}
+          actorAssets={actorAssets}
           backgroundId={backgroundId}
           backgroundColor={backgroundColor}
           onChangeIcon={(icon) => setActorIcon(icon ?? undefined)}
           onChangeShape={setActorShape}
           onChangeSize={setActorSize}
           onChangeBorder={setActorBorder}
+          onChangeAssets={(patch) => setActorAssets((prev) => ({ ...prev, ...patch }))}
           onChangeBackground={setBackgroundId}
           onChangeBackgroundColor={setBackgroundColor}
           onClose={() => setIsActorPickerOpen(false)}
@@ -1700,6 +2119,9 @@ export function MapCanvas() {
               setActiveLineId(null)
               startLineFrom(lastPt)
             } : undefined}
+            onAddWalking={() => addWalkingPoint(selectedLineBodyId)}
+            walkingPoints={line.walkingPoints}
+            onDeleteWalkingPoint={deleteWalkingPoint}
             onDelete={deleteSelectedLineBody}
             onClose={closeLineBody}
           />
@@ -1707,14 +2129,21 @@ export function MapCanvas() {
       })() : null}
 
       {/* DataPanel — outside scroll container so it stays fixed when scrolling */}
-      {isEditorEnabled && isDataPanelOpen ? (
+      {isDataPanelOpen ? (
         <DataPanel
           lines={lines}
           checkpoints={checkpoints}
           highlightedLineId={highlightedLineId}
           highlightedCheckpointId={highlightedCheckpointId}
+          isEditorEnabled={isEditorEnabled}
           onSelectLine={selectLineFromPanel}
           onSelectCheckpoint={selectCheckpointFromPanel}
+          onEditCheckpointLabel={openCheckpointEditModal}
+          onChangeCheckpointIcon={(cpId) => setIconPickerCpId(cpId)}
+          onDeleteCheckpoint={deleteCheckpoint}
+          onConfirmCheckpointAnim={handleConfirmCheckpointAnim}
+          selectedCheckpointId={selectedCheckpointId}
+          actorState={actorState}
           onClose={() => setIsDataPanelOpen(false)}
         />
       ) : null}

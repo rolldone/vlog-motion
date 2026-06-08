@@ -54,20 +54,21 @@ export function EditorToolbar({
 
       {/* right: action buttons */}
       <div className="flex items-center gap-1.5">
-        {/* toggle data panel — only in edit mode */}
+        {/* toggle data panel — visible in both modes */}
+        <button
+          type="button"
+          onClick={onToggleDataPanel}
+          className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            isDataPanelOpen
+              ? 'bg-sky-100 text-sky-700'
+              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+          }`}
+        >
+          Data
+        </button>
+        {/* actor picker — only in edit mode */}
         {isEditorEnabled ? (
           <>
-            <button
-              type="button"
-              onClick={onToggleDataPanel}
-              className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                isDataPanelOpen
-                  ? 'bg-sky-100 text-sky-700'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-              }`}
-            >
-              Data
-            </button>
             <button
               type="button"
               onClick={onOpenActorPicker}

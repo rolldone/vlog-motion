@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { WalkingPoint } from '../types'
 
 const LINE_COLORS = [
   '#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6',
@@ -23,6 +24,9 @@ type LineBodyPopupProps = {
   onLineStyleChange?: (patch: LineStyleValue) => void
   onExtend?: () => void
   onNewLine?: () => void
+  onAddWalking?: () => void
+  walkingPoints?: WalkingPoint[]
+  onDeleteWalkingPoint?: (wpId: string) => void
   onDelete: () => void
   onClose: () => void
 }
@@ -33,6 +37,9 @@ export function LineBodyPopup({
   onLineStyleChange,
   onExtend,
   onNewLine,
+  onAddWalking,
+  walkingPoints,
+  onDeleteWalkingPoint,
   onDelete,
   onClose,
 }: LineBodyPopupProps) {
@@ -72,6 +79,15 @@ export function LineBodyPopup({
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
           >
             New line
+          </button>
+        ) : null}
+        {onAddWalking ? (
+          <button
+            type="button"
+            onClick={onAddWalking}
+            className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-100"
+          >
+            🚶 Walking{walkingPoints && walkingPoints.length > 0 ? ` (${walkingPoints.length})` : ''}
           </button>
         ) : null}
         {onLineStyleChange ? (
@@ -222,6 +238,32 @@ export function LineBodyPopup({
               />
               <span className="w-9 rounded-md border border-slate-200 bg-slate-50 px-1 py-0.5 text-center font-mono text-[10px] text-slate-700">{width.toFixed(1)}</span>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* walking points list */}
+      {walkingPoints && walkingPoints.length > 0 ? (
+        <div className="mt-2 border-t border-slate-100 pt-2">
+          <div className="mb-1 text-[10px] font-medium text-slate-400">Walking Points ({walkingPoints.length})</div>
+          <div className="flex flex-col gap-1">
+            {walkingPoints.map((wp, idx) => (
+              <div key={wp.id} className="flex items-center justify-between gap-2 rounded-lg bg-purple-50 px-2 py-1">
+                <span className="text-[11px] text-purple-700 font-medium">
+                  WP{idx + 1} <span className="text-purple-400 font-normal">({wp.x.toFixed(1)}, {wp.y.toFixed(1)})</span>
+                </span>
+                {onDeleteWalkingPoint ? (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteWalkingPoint(wp.id)}
+                    className="rounded-md px-1.5 py-0.5 text-[10px] text-red-500 hover:bg-red-100 transition"
+                    title="Delete walking point"
+                  >
+                    🗑
+                  </button>
+                ) : null}
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
