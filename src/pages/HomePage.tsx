@@ -22,6 +22,27 @@ const projects = [
     status: 'Coming soon',
     accent: 'from-emerald-500 to-lime-400',
   },
+  {
+    title: 'Inventory',
+    description: 'Project untuk inventory management, tracking item, dan visualisasi stok.',
+    route: '/projects/inventory',
+    status: 'Active',
+    accent: 'from-violet-500 to-purple-400',
+  },
+  {
+    title: 'Gallery',
+    description: 'Project gallery — koleksi visual, motion assets, dan gallery items.',
+    route: '/projects/gallery',
+    status: 'Active',
+    accent: 'from-pink-500 to-rose-400',
+  },
+  {
+    title: 'Cost',
+    description: 'Project untuk cost tracking, expense management, dan visualisasi pengeluaran.',
+    route: '/projects/cost',
+    status: 'Active',
+    accent: 'from-teal-500 to-emerald-400',
+  },
 ]
 
 export function HomePage() {
