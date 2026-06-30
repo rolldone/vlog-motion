@@ -52,7 +52,7 @@ export function LineActionMenu({
   onDeletePoint,
   onDelete,
   onClose,
-  style,
+  style: _style,
 }: LineActionMenuProps) {
   const [showStyle, setShowStyle] = useState(false)
   const color = lineStyle?.color ?? '#10b981'
