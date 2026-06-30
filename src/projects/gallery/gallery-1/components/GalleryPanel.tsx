@@ -7,10 +7,24 @@ export function GalleryPanel() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isGalleryOpen, setIsGalleryOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null)
-  const [bgColor, setBgColor] = useState('#0f172a')
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(
-    () => new Set(GALLERY_ITEMS.map((g) => g.id))
-  )
+  const [bgColor, setBgColor] = useState(() => {
+    try { return localStorage.getItem('gallery-bg-color') || '#0f172a' } catch { return '#0f172a' }
+  })
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('gallery-checked-ids')
+      if (saved) return new Set(JSON.parse(saved))
+    } catch { /* ignore */ }
+    return new Set(GALLERY_ITEMS.map((g) => g.id))
+  })
+
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem('gallery-checked-ids', JSON.stringify([...checkedIds]))
+  }, [checkedIds])
+  useEffect(() => {
+    localStorage.setItem('gallery-bg-color', bgColor)
+  }, [bgColor])
 
   const toggleCheck = useCallback((id: string) => {
     setCheckedIds((prev) => {
