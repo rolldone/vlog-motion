@@ -18,6 +18,9 @@ import { Gallery1Page } from './projects/gallery/gallery-1/Gallery1Page'
 import { CostPage } from './projects/cost/CostPage'
 import { CostOverviewPage } from './projects/cost/CostOverviewPage'
 import { Project1Page as CostProject1Page } from './projects/cost/project-1/Project1Page'
+import { GamePlayPage } from './projects/gameplay/GamePlayPage'
+import { GamePlayOverviewPage } from './projects/gameplay/GamePlayOverviewPage'
+import { GamePlay1Page } from './projects/gameplay/gameplay-1/GamePlay1Page'
 
 function App() {
   return (
@@ -44,6 +47,10 @@ function App() {
       <Route path="/projects/cost" element={<CostPage />}>
         <Route index element={<CostOverviewPage />} />
         <Route path="project-1" element={<CostProject1Page />} />
+      </Route>
+      <Route path="/projects/gameplay" element={<GamePlayPage />}>
+        <Route index element={<GamePlayOverviewPage />} />
+        <Route path="gameplay-1" element={<GamePlay1Page />} />
       </Route>
       <Route path="/projects/motion-close-page" element={<MotionClosePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

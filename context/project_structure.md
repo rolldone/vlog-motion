@@ -1,14 +1,59 @@
-# 🗺️ Actor Movement Map Editor — Project Structure
+# 🗺️ Donis Outdoor — Project Structure
 
 ## Tech Stack
 - **Vite 8.0.14** + **React 19.2.6** + **TypeScript ~6.0.2** + **Tailwind CSS 4.3**
-- **@motionone/dom** — actor animation (`animate()`)
+- **@motionone/dom** (v10) — actor animation (`animate()`) — actor-movement-map
+- **motion** (v12) — intro menu animations (`motion/react`) — motion-intro-menu
 - **BFS pathfinding** — `buildLineGraph()` → `findPathToPoint()`
 - **SVG rendering** — `viewBox="0 0 100 100"` (percentage coordinates)
+- **Puppeteer + Chromium snap** — headless browser streaming (gameplay-1, will be replaced by Electron)
+- **SSE** — screenshot streaming (gameplay-1, will be replaced)
+- **react-router-dom** — routing
 
 ---
 
-## Directory Tree
+## Top-Level Directory Tree
+
+```
+donis_outdoor/
+├── vite.config.ts                    — Vite config + proxyPlugin + browserStreamPlugin
+├── package.json
+├── tsconfig.json / tsconfig.app.json / tsconfig.node.json
+├── eslint.config.js
+├── index.html
+├── context/                          — Documentation
+│   ├── CONCEPT_interactive_video_dashboard.md
+│   ├── IMPLEMENTED_FEATURES.md
+│   ├── PROJECT_STATUS.md
+│   ├── TODO_NEXT.md
+│   └── project_structure.md          — This file
+├── public/
+│   └── sound/
+└── src/
+    ├── App.tsx                       — Routes
+    ├── main.tsx                      — Entry point
+    ├── App.css / index.css
+    ├── components/
+    │   └── ProjectShell.tsx          — Admin shell wrapper (title, back button, menu)
+    ├── pages/
+    │   ├── HomePage.tsx              — Project catalog (cards)
+    │   ├── ActorMovementWorkspace.tsx
+    │   └── AdminOverview.tsx
+    ├── plugins/
+    │   └── browserStreamPlugin.ts    — Puppeteer headless streaming (SSE)
+    └── projects/
+        ├── actor-movement-map/       — Map editor (✅ functional)
+        ├── gameplay/                 — Interactive video dashboard (🔄 in progress)
+        ├── motion-intro-menu/        — Intro menu animations (✅ done)
+        ├── motion-close-page/        — Close page animation (✅ done)
+        ├── inventory/                — Inventory panel (✅ done)
+        ├── gallery/                  — Gallery panel (✅ done)
+        └── cost/                     — Cost panel (✅ done)
+```
+
+---
+
+## Module 1: Actor Movement Map Editor
 
 ```
 src/projects/actor-movement-map/
@@ -43,37 +88,18 @@ src/projects/actor-movement-map/
 │       ├── RouteLayer.tsx             (95L)  — SVG line + walking point rendering
 │       └── SaveDialog.tsx             (66L)  — (Legacy) Standalone save dialog
 │
-├── project-2/
-│   └── Project2Page.tsx                   — Placeholder
-│
-├── project-3/
-│   └── Project3Page.tsx                   — Placeholder
-│
+├── project-2/  — Placeholder
+├── project-3/  — Placeholder
 └── assets/
-    ├── actors/                             — Actor sprite images
-    │   ├── hero.png
-    │   ├── react.svg
-    │   └── vite.svg
-    ├── backgrounds/                        — Map background images
-    │   └── istockphoto-688848706-1024x1024.jpg
-    ├── checkpoints/                        — Checkpoint icon images
-    │   ├── hero.png
-    │   ├── react.svg
-    │   └── vite.svg
-    └── datas/                              — Saved map data (JSON)
+    ├── actors/           — Actor sprite images
+    ├── backgrounds/      — Map background images
+    ├── checkpoints/      — Checkpoint icon images
+    └── datas/           — Saved map data (JSON)
         ├── test.json
         └── harta-karun.json
 ```
 
-**Total: ~4,900 lines** across all files.
-
----
-
-## Core Files Breakdown
-
 ### `MapCanvas.tsx` (~2168 lines) — The Brain
-Everything lives here: all state, all logic, all rendering. This is the single orchestrator.
-
 | Section | Lines | Description |
 |---------|-------|-------------|
 | **Imports** | 1–25 | React, motionone, types, all components |
@@ -100,42 +126,122 @@ ActorState    'idle' | 'walking' | 'stop' | 'finish'
 ActorAssets   { idle?, walking?, stop?, finish? }
 ```
 
-### `data.ts` (30 lines) — Data Registry
-- `MapDataEntry` type — schema for saved/loaded map data
-- `AVAILABLE_DATAS` — registered map data entries (imported from JSON files)
+---
 
-### `actorAssets.ts` (21 lines) — Sprite Registry
-- Auto-discovers actor sprite images from `assets/actors/`
-- Exports `ACTOR_SPRITE_LIST` with `{ id, label, src }` entries
+## Module 2: Gameplay — Interactive Video Dashboard
 
-### `backgrounds.ts` (13 lines) — Background Registry
-- Auto-discovers background images from `assets/backgrounds/`
-- Exports `BACKGROUND_LIST` with `{ id, label, src }` entries
+```
+src/projects/gameplay/
+├── GamePlayPage.tsx                          — Route wrapper (ProjectShell + Outlet)
+├── GamePlayOverviewPage.tsx                  — Overview/landing page
+└── gameplay-1/
+    ├── GamePlay1Page.tsx                     — 🧠 Main dashboard page (fullscreen + HUD)
+    └── components/
+        ├── GameHUD.tsx                       — Top menu bar (inventory, map, browser buttons)
+        ├── InventoryPanel.tsx                — 8-slot inventory grid (placeholder)
+        ├── MapPanel.tsx                      — Map placeholder
+        ├── BrowserPanel.tsx                  — URL bar + bookmarks + floating window launcher
+        ├── BrowserStream.tsx                 — SSE screenshot receiver (Puppeteer stream)
+        └── FloatingWindow.tsx               — Draggable + resizable window (createPortal)
+```
+
+### `GamePlay1Page.tsx` — Main Dashboard
+- Fullscreen mode (`document.documentElement.requestFullscreen()`)
+- GameHUD menu bar with 3 items: Inventory, Map, Browser
+- Panel toggle (click same item to close)
+- Dark theme (bg-black, orange accent)
+
+### `BrowserPanel.tsx` — Browser Panel
+- URL input bar + Go button
+- Bookmarks: Bing, Bing Maps, Wikipedia, YouTube, Reddit
+- Opens `FloatingWindow` with `BrowserStream` child
+- Calls `/browser/close` on window close
+
+### `BrowserStream.tsx` — SSE Screenshot Receiver
+- `EventSource('/browser/stream')` — receives JPEG screenshots
+- Renders as `<img>` element
+- Click → POST `/browser/click` (coordinates scaled 1280×800)
+- Navigate → POST `/browser/navigate`
+- `prevUrlRef` + `navigatingRef` guards for race conditions
+- `onUrlChangeRef` stable callback (prevents infinite render loop)
+
+### `FloatingWindow.tsx` — Draggable/Resizable Window
+- Drag by title bar, resize by bottom-right corner
+- 80% screen width/height default
+- `createPortal` to `document.body` (outside DOM hierarchy)
+- Accepts `children` (BrowserStream) or `url` (iframe)
+
+### `browserStreamPlugin.ts` — Puppeteer Streaming Server
+- Singleton session (`sessionPromise`) — prevents multiple Chromium instances
+- Chromium: `/snap/bin/chromium`, headless, 1280×800, JPEG quality 60
+- Endpoints:
+  - `GET /browser/stream` — SSE screenshots every 500ms
+  - `POST /browser/navigate` — navigate to URL
+  - `POST /browser/click` — click at coordinates
+  - `POST /browser/scroll` — scroll up/down
+  - `POST /browser/type` — type text
+  - `POST /browser/key` — press key
+  - `POST /browser/close` — close browser session
+- Auto-cleanup on server close
+
+### `vite.config.ts` — Plugins
+- `proxyPlugin()` — iframe proxy (v1, still present): fetch URL, strip headers, inject `<base>` + intercept script
+- `browserStreamPlugin()` — Puppeteer streaming (v2, current)
+- `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'` — SSL cert bypass (dev only)
 
 ---
 
-## Component Responsibilities
+## Module 3-7: Other Projects (All ✅ Done)
 
-| Component | Parent | Trigger | Purpose |
-|-----------|--------|---------|---------|
-| `EditorToolbar` | MapCanvas | Always | Mode toggle, zoom, tools, settings buttons |
-| `DataPanel` | MapCanvas | Data button | Side panel with lines/checkpoints list |
-| `ActorSettingsModal` | MapCanvas | Actor button | Icon, shape, size, border, speed, sprites |
-| `CheckpointModal` | MapCanvas | Click empty space / edit label | Create/edit checkpoint |
-| `CheckpointActionMenu` | MapCanvas | Right-click checkpoint | Checkpoint actions (edit, connect, delete) |
-| `CheckpointLayer` | MapCanvas | Always (SVG) | Render checkpoint markers on canvas |
-| `LineActionMenu` | MapCanvas | Click line endpoint | Line edit (style, walking points, delete) |
-| `LineBodyPopup` | MapCanvas | Click line body | Line body actions (extend, style, walking points) |
-| `RouteLayer` | MapCanvas | Always (SVG) | Render lines + walking point markers |
-| `ActorMarker` | MapCanvas | Always | Render actor marker on canvas |
-| `IconPicker` | CheckpointActionMenu | Icon button | Icon/shape/size/border picker |
-| `ConnectAcceptPopup` | MapCanvas | Connect confirmation | Accept/reject connect |
-| `MapDataPicker` | MapCanvas | Map Data button | Save/load dialog |
-| `PointPopup` | MapCanvas | Right-click map point | Map point menu |
+### Motion Intro Menu (`src/projects/motion-intro-menu/`)
+- `MotionIntroMenuPage.tsx` — Route wrapper
+- `MotionIntroOverviewPage.tsx` — Overview
+- `intro-menu-1/IntroMenu1Page.tsx` — Main intro menu
+- `intro-menu-1/TextStepper.tsx` — Text animation stepper
+- `components/MultiStateBadge.tsx` — Badge component
+- Uses `motion` (v12) — `motion/react`, `AnimatePresence`, `useTime`, `useTransform`
+
+### Inventory (`src/projects/inventory/`)
+- `InventoryPage.tsx` + `InventoryOverviewPage.tsx`
+- `project-1/` — items, types, InventoryPanel, useSounds hook
+
+### Gallery (`src/projects/gallery/`)
+- `GalleryPage.tsx` + `GalleryOverviewPage.tsx`
+- `gallery-1/` — items, Gallery1Page, GalleryPanel, useSounds hook
+
+### Cost (`src/projects/cost/`)
+- `CostPage.tsx` + `CostOverviewPage.tsx`
+- `project-1/` — items, types, CostPanel, useSounds hook
+
+### Motion Close Page (`src/projects/motion-close-page/`)
+- `MotionClosePage.tsx` — Close page animation
 
 ---
 
-## Core Concepts
+## Routing (`App.tsx`)
+
+```
+/                                          → HomePage (project catalog)
+/projects/actor-movement-map               → ActorMovementMapPage
+  /project-1                               → Project1Page (MapCanvas)
+  /project-2                               → Placeholder
+  /project-3                               → Placeholder
+/projects/motion-intro-menu                → MotionIntroMenuPage
+  /intro-menu-1                            → IntroMenu1Page
+/projects/inventory                        → InventoryPage
+  /project-1                               → InventoryProject1Page
+/projects/gallery                          → GalleryPage
+  /gallery-1                               → Gallery1Page
+/projects/cost                             → CostPage
+  /project-1                               → CostProject1Page
+/projects/gameplay                         → GamePlayPage
+  /gameplay-1                              → GamePlay1Page
+/projects/motion-close-page                → MotionClosePage
+```
+
+---
+
+## Core Concepts (Actor Movement Map)
 
 ### Modes
 - **Edit Mode** — Draw lines, create checkpoints, add walking points, style everything
@@ -179,14 +285,11 @@ findPathToPoint(target)
 - **Load**: Select from `AVAILABLE_DATAS` registry (files in `assets/datas/`)
 - Walking points are part of `Line` object → automatically included in save/load
 
----
-
-## Animation Speed System
+### Animation Speed System
 - `actorSpeed` state (default `1.0`) — global speed multiplier
 - UI: Slider in Actor Settings → Animation tab (0.2x – 3.0x)
 - Applied as: `duration: 0.18 / actorSpeed` (base duration divided by speed)
 - Saved in JSON as `actor.speed`
-- **Not applied to**: mode transitions, teleport jumps (those use fixed durations)
 
 ---
 
@@ -194,4 +297,5 @@ findPathToPoint(target)
 - `LineStylePicker.tsx` — Standalone picker, replaced by inline style in `LineActionMenu`/`LineBodyPopup`
 - `LoadDialog.tsx` — Legacy, replaced by `MapDataPicker`
 - `SaveDialog.tsx` — Legacy, replaced by `MapDataPicker`
-- `project-2/`, `project-3/` — Placeholder pages (not implemented)
+- `project-2/`, `project-3/` (actor-movement-map) — Placeholder pages (not implemented)
+- `proxyPlugin()` in `vite.config.ts` — v1 iframe proxy, replaced by `browserStreamPlugin()` but still present

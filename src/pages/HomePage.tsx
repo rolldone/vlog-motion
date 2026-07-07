@@ -43,6 +43,13 @@ const projects = [
     status: 'Active',
     accent: 'from-teal-500 to-emerald-400',
   },
+  {
+    title: 'GamePlay',
+    description: 'Interactive video dashboard — load video, overlay UI, rekam pakai OBS.',
+    route: '/projects/gameplay',
+    status: 'Active',
+    accent: 'from-orange-500 to-amber-400',
+  },
 ]
 
 export function HomePage() {

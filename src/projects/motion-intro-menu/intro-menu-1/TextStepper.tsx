@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'motion/react'
 
 /* ── Step definitions with colors & icons ────────────────────── */
@@ -55,12 +55,44 @@ const FAST = { type: 'spring' as const, stiffness: 500, damping: 35 }
 export function TextStepper() {
   const [currentStep, setCurrentStep] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [bgColor, setBgColor] = useState(() => {
+    try {
+      return localStorage.getItem('stepper-bg-color') || '#f8fafc'
+    } catch { return '#f8fafc' }
+  })
   const step = STEPS[currentStep]
   const isLastStep = currentStep === STEPS.length - 1
   const Icon = step.icon
 
   const [isClosing, setIsClosing] = useState(false)
   const [closeRings, setCloseRings] = useState(false)
+
+  /* ── Persist bg color ─────────────────────────────────── */
+  useEffect(() => {
+    localStorage.setItem('stepper-bg-color', bgColor)
+  }, [bgColor])
+
+  /* ── Click sound on step change ───────────────────────── */
+  const clickRef = useRef<HTMLAudioElement | null>(null)
+  useEffect(() => {
+    clickRef.current = new Audio('/sound/click.mp3')
+    clickRef.current.volume = 0.4
+    clickRef.current.playbackRate = 1.8
+  }, [])
+
+  const playClick = useCallback(() => {
+    if (clickRef.current) {
+      clickRef.current.currentTime = 0
+      clickRef.current.play().catch(() => {})
+    }
+  }, [])
+
+  /* ── Win sound for close animation ────────────────────── */
+  const winRef = useRef<HTMLAudioElement | null>(null)
+  useEffect(() => {
+    winRef.current = new Audio('/sound/win.mp3')
+    winRef.current.volume = 0.5
+  }, [])
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => !prev)
@@ -84,6 +116,11 @@ export function TextStepper() {
 
   const handleNext = () => {
     if (isClosing) return
+    // Skip click if next step is close (win sound will play instead)
+    const nextStep = STEPS[currentStep + 1]
+    if (!nextStep || !(nextStep as any).isClose) {
+      playClick()
+    }
     if (isLastStep) {
       setCurrentStep(0)
     } else {
@@ -95,6 +132,10 @@ export function TextStepper() {
   useEffect(() => {
     if (!(step as any).isClose) return
     setIsClosing(true)
+    if (winRef.current) {
+      winRef.current.currentTime = 0
+      winRef.current.play().catch(() => {})
+    }
 
     // Phase 1: pop up (200ms)
     animate(scale, [1, 1.12], {
@@ -120,19 +161,44 @@ export function TextStepper() {
   /* ── Fullscreen mode ───────────────────────────────────── */
   if (isFullscreen) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-slate-50">
+      <div className="fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: bgColor }}>
         {/* Top bar — hidden during close */}
         {!isClosing && (
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2">
-          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-500">
-            Text Stepper
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-500">
+              Text Stepper
+            </span>
+
+            {/* BG Color picker */}
+            <div className="flex items-center gap-1.5 ml-3">
+              {([
+                { color: '#f8fafc', label: 'Light' },
+                { color: '#0f172a', label: 'Dark' },
+                { color: '#00ff00', label: 'Green' },
+                { color: '#ffffff', label: 'Putih' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.color}
+                  onClick={() => setBgColor(opt.color)}
+                  className={`h-5 w-5 rounded-md border-2 transition hover:scale-110 ${
+                    bgColor === opt.color ? 'border-teal-400' : 'border-slate-300'
+                  }`}
+                  style={{ backgroundColor: opt.color }}
+                  title={opt.label}
+                />
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {/* Step nav buttons */}
             <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-0.5">
               <button
                 type="button"
-                onClick={() => setCurrentStep((p) => Math.max(0, p - 1))}
+                onClick={() => {
+                  playClick()
+                  setCurrentStep((p) => Math.max(0, p - 1))
+                }}
                 disabled={currentStep === 0}
                 className="rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-30"
               >
@@ -146,12 +212,18 @@ export function TextStepper() {
                 onClick={() => {
                   if (currentStep === STEPS.length - 1) {
                     // Reset: restore card & go back to step 1
+                    playClick()
                     setIsClosing(false)
                     animate(scale, 1, { duration: 0 })
                     cardRotate.set(0)
                     cardOpacity.set(1)
                     setCurrentStep(0)
                   } else {
+                    // Skip click if next step is close (win sound will play instead)
+                    const nextStep = STEPS[currentStep + 1]
+                    if (!nextStep || !(nextStep as any).isClose) {
+                      playClick()
+                    }
                     setCurrentStep((p) => Math.min(STEPS.length - 1, p + 1))
                   }
                 }}
@@ -277,7 +349,7 @@ export function TextStepper() {
         </div>
 
         {/* Progress bar — full width at bottom, fixed segments */}
-        <div className="border-t border-slate-200 bg-white px-4 py-3">
+        <div className="border-t border-slate-200 bg-white/80 backdrop-blur px-4 py-3">
           <div className="flex gap-1.5">
             {STEPS.map((s, i) => (
               <div
