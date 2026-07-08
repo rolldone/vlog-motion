@@ -81,23 +81,106 @@
 - [x] **MapPanel** — Placeholder (aspect-video box)
 - [x] **BrowserPanel** — URL bar + bookmarks + floating window browser
 
-### Browser — Proxy Iframe Approach (v1, masih di vite.config.ts)
-- [x] `proxyPlugin()` di `vite.config.ts` — fetch target URL, strip X-Frame-Options/CSP headers
-- [x] Inject `<base>` tag supaya relative URLs resolve ke domain asli
-- [x] Strip `<meta>` CSP & X-Frame-Options tags dari HTML
-- [x] Intercept script — click/link/window.open/location/history → postMessage ke parent
+### Browser — Electron WebContentsView Approach (v3, current ✅)
+- [x] `electron.vite.config.ts` — unified config for main/preload/renderer
+- [x] `src/main/index.ts` — Electron main process with WebContentsView
+- [x] WebContentsView — native browser rendering in main process (60fps)
+- [x] `addChildView`/`removeChildView` — attach/detach browser view to window
+- [x] IPC handlers — browser:navigate, browser:show, browser:hide, browser:close,
+      browser:set-bounds, browser:go-back, browser:go-forward, browser:reload
+- [x] URL change forwarding — `did-navigate` → `browser-url-changed` event to renderer
+- [x] `src/preload/index.ts` — contextBridge exposes `window.browser` API
+- [x] BrowserPanel.tsx — uses `window.browser` IPC API (navigate, show, hide, close, setBounds)
+- [x] FloatingWindow.tsx — draggable/resizable window chrome, transparent content area
 - [x] Bookmarks: Bing, Bing Maps, Wikipedia, YouTube, Reddit
-- [x] **Limitation**: Google/DuckDuckGo refuse, JS-heavy SPAs navigation not intercepted
+- [x] **Advantage**: Native rendering, full interactivity, no latency
 
-### Browser — Headless Streaming Approach (v2, current)
-- [x] `browserStreamPlugin()` di `src/plugins/browserStreamPlugin.ts`
-- [x] Puppeteer headless Chromium (`/snap/bin/chromium`, 1280×800, JPEG quality 60)
-- [x] SSE stream endpoint (`/browser/stream`) — screenshots every 500ms
-- [x] Navigate endpoint (`/browser/navigate`)
-- [x] Click endpoint (`/browser/click`) — coordinate scaled from display to 1280×800
-- [x] Scroll endpoint (`/browser/scroll`)
-- [x] Type endpoint (`/browser/type`)
-- [x] Key endpoint (`/browser/key`)
+### Removed (Superseded)
+- ~~Proxy iframe approach~~ — `proxyPlugin` removed
+- ~~Headless Puppeteer streaming~~ — `browserStreamPlugin.ts` deleted
+
+---
+
+## ✅ Project File Save/Load (.donis files)
+
+### Project Manager (`src/renderer/projects/gameplay/gameplay-1/components/ProjectManager.tsx`)
+- [x] Save project → native save dialog → `.donis` JSON file
+- [x] Load project → native open dialog → parse JSON → restore state
+- [x] Save As — save to new file path
+- [x] Recent files list (max 10) — stored in localStorage `project-recent-files`
+- [x] Modified indicator — `isModifiedRef` tracks unsaved changes
+- [x] Project name + file path persisted to localStorage
+
+### Project File Schema (`types.ts` → `ProjectFile`)
+- [x] `version: 1` — format version for backward compatibility
+- [x] `name`, `savedAt`, `createdAt` — metadata
+- [x] **Video**: `videoPath`, `videoName`, `videoSize`, `videoTime`, `isPlaying`
+- [x] **Inventory**: `items`, `history`, `checkedIds`, `customOrder`, `sortMode`, `bgColor`
+- [x] **Cost**: `total`, `history`, `bgColor`
+- [x] **Gallery**: `images[]`, `checkedIds`, `bgColor`
+
+### State Persistence (`projectManager.ts`)
+- [x] `collectProjectState()` — read all state from localStorage → ProjectFile
+- [x] `restoreProjectState()` — write ProjectFile → localStorage
+- [x] `getRecentFiles()`, `addRecentFile()`, `removeRecentFile()`, `clearRecentFiles()`
+
+---
+
+## ✅ Video File Persistence
+
+### VideoSelector (`src/renderer/projects/gameplay/gameplay-1/components/VideoSelector.tsx`)
+- [x] File picker — select .mp4 from disk
+- [x] Preview video player
+- [x] Shows file name + size
+- [x] Fallback props — display video info after reload (when File object is null)
+- [x] `fallbackName`, `fallbackSize`, `fallbackUrl` props from parent
+
+### Auto-load Video on Project Open
+- [x] Save `project-video-path` to localStorage via `webUtils.getPathForFile()`
+- [x] On mount/reload: read path → `window.project.fileExists()` → set `file://` URL
+- [x] Missing file warning banner — if file not found at saved path
+- [x] `webSecurity: false` in BrowserWindow — allows `file://` from `http://localhost` dev server
+- [x] Video plays correctly after reload in fullscreen mode
+
+### Electron 43 Compatibility
+- [x] `File.path` removed in Electron 43 → use `webUtils.getPathForFile(file)`
+- [x] Exposed via preload: `window.project.getFilePath(file)`
+
+---
+
+## ✅ Inventory Sort Mode Persistence
+- [x] `sortMode` saved to localStorage (`inventory-sort-mode`)
+- [x] Included in ProjectFile schema (`inventory.sortMode`)
+- [x] Restored on project load
+
+---
+
+## ✅ Gallery Custom Image Upload
+
+### GallerySelector (`src/renderer/projects/gallery/gallery-1/components/GallerySelector.tsx`)
+- [x] Multi-image file picker — select JPG/PNG/GIF/WebP from disk
+- [x] List view with checkboxes — toggle visible/hidden per image
+- [x] Reorder buttons (↑↓) — custom sort order
+- [x] Remove button (✕) — delete custom image
+- [x] Auto-check new images on add
+- [x] Image path via `window.project.getFilePath()` → `file://` URL
+- [x] Images persisted to localStorage (`gallery-images`)
+- [x] Included in ProjectFile schema (`gallery.images[]`)
+- [x] Restored on project load
+- [x] Static default images (Pixabay) removed — 100% user-uploaded
+
+### GalleryPanel (`src/renderer/projects/gallery/gallery-1/components/GalleryPanel.tsx`)
+- [x] Unified list view (selector + checklist combined)
+- [x] Fullscreen gallery modal with detail view
+- [x] Prev/Next navigation + keyboard arrows
+- [x] BG color picker
+
+### GalleryDisplay (`src/renderer/projects/gameplay/gameplay-1/components/GalleryDisplay.tsx`)
+- [x] Reads custom images from localStorage
+- [x] Embedded mode (in gameplay HUD panel) + standalone mode
+- [x] Detail modal with image viewer
+- ~~SSE screenshot streaming~~ — `BrowserStream.tsx` deleted
+- ~~`vite.config.ts`~~ — replaced by `electron.vite.config.ts`
 - [x] Close endpoint (`/browser/close`) — cleanup Chromium
 - [x] Singleton session (`sessionPromise`) — prevent multiple Chromium instances
 - [x] Auto-cleanup on server close

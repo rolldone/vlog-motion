@@ -1,13 +1,15 @@
 # 🗺️ Donis Outdoor — Project Structure
 
 ## Tech Stack
-- **Vite 8.0.14** + **React 19.2.6** + **TypeScript ~6.0.2** + **Tailwind CSS 4.3**
+- **electron-vite 6.0.0-beta.1** (Vite 8) — Electron build tooling (main/preload/renderer)
+- **Electron 43** — Desktop app framework, WebContentsView for browser panel
+- **React 19.2.6** + **TypeScript ~6.0.2** + **Tailwind CSS 4.3**
 - **@motionone/dom** (v10) — actor animation (`animate()`) — actor-movement-map
 - **motion** (v12) — intro menu animations (`motion/react`) — motion-intro-menu
 - **BFS pathfinding** — `buildLineGraph()` → `findPathToPoint()`
 - **SVG rendering** — `viewBox="0 0 100 100"` (percentage coordinates)
-- **Puppeteer + Chromium snap** — headless browser streaming (gameplay-1, will be replaced by Electron)
-- **SSE** — screenshot streaming (gameplay-1, will be replaced)
+- **WebContentsView** — native browser rendering in main process (gameplay-1)
+- **IPC (contextBridge)** — renderer ↔ main communication for browser panel
 - **react-router-dom** — routing
 
 ---
@@ -16,11 +18,10 @@
 
 ```
 donis_outdoor/
-├── vite.config.ts                    — Vite config + proxyPlugin + browserStreamPlugin
-├── package.json
-├── tsconfig.json / tsconfig.app.json / tsconfig.node.json
+├── electron.vite.config.ts           — Unified config (main + preload + renderer)
+├── package.json                      — main: ./out/main/index.js, scripts: electron-vite dev/build/preview
+├── tsconfig.json / tsconfig.node.json / tsconfig.web.json
 ├── eslint.config.js
-├── index.html
 ├── context/                          — Documentation
 │   ├── CONCEPT_interactive_video_dashboard.md
 │   ├── IMPLEMENTED_FEATURES.md
@@ -28,27 +29,33 @@ donis_outdoor/
 │   ├── TODO_NEXT.md
 │   └── project_structure.md          — This file
 ├── public/
+│   ├── map.png                       — Map background (moved from src/)
 │   └── sound/
 └── src/
-    ├── App.tsx                       — Routes
-    ├── main.tsx                      — Entry point
-    ├── App.css / index.css
-    ├── components/
-    │   └── ProjectShell.tsx          — Admin shell wrapper (title, back button, menu)
-    ├── pages/
-    │   ├── HomePage.tsx              — Project catalog (cards)
-    │   ├── ActorMovementWorkspace.tsx
-    │   └── AdminOverview.tsx
-    ├── plugins/
-    │   └── browserStreamPlugin.ts    — Puppeteer headless streaming (SSE)
-    └── projects/
-        ├── actor-movement-map/       — Map editor (✅ functional)
-        ├── gameplay/                 — Interactive video dashboard (🔄 in progress)
-        ├── motion-intro-menu/        — Intro menu animations (✅ done)
-        ├── motion-close-page/        — Close page animation (✅ done)
-        ├── inventory/                — Inventory panel (✅ done)
-        ├── gallery/                  — Gallery panel (✅ done)
-        └── cost/                     — Cost panel (✅ done)
+    ├── main/
+    │   └── index.ts                  — Electron main process (window, WebContentsView, IPC)
+    ├── preload/
+    │   └── index.ts                  — contextBridge — exposes window.browser API
+    └── renderer/
+        ├── index.html                — HTML entry (moved from root)
+        ├── main.tsx                  — React entry point
+        ├── App.tsx                   — Routes
+        ├── App.css / index.css
+        ├── browser.d.ts              — TypeScript declarations for window.browser
+        ├── components/
+        │   └── ProjectShell.tsx      — Admin shell wrapper (title, back button, menu)
+        ├── pages/
+        │   ├── HomePage.tsx          — Project catalog (cards)
+        │   ├── ActorMovementWorkspace.tsx
+        │   └── AdminOverview.tsx
+        └── projects/
+            ├── actor-movement-map/   — Map editor (✅ functional)
+            ├── gameplay/             — Interactive video dashboard (✅ migrated)
+            ├── motion-intro-menu/    — Intro menu animations (✅ done)
+            ├── motion-close-page/    — Close page animation (✅ done)
+            ├── inventory/            — Inventory panel (✅ done)
+            ├── gallery/              — Gallery panel (✅ done)
+            └── cost/                 — Cost panel (✅ done)
 ```
 
 ---
@@ -56,7 +63,7 @@ donis_outdoor/
 ## Module 1: Actor Movement Map Editor
 
 ```
-src/projects/actor-movement-map/
+src/renderer/projects/actor-movement-map/
 │
 ├── ActorMovementMapPage.tsx          (33L)  — Route wrapper for project-1
 ├── ActorMovementOverviewPage.tsx     (51L)  — Overview/landing page
@@ -131,63 +138,85 @@ ActorAssets   { idle?, walking?, stop?, finish? }
 ## Module 2: Gameplay — Interactive Video Dashboard
 
 ```
-src/projects/gameplay/
+src/renderer/projects/gameplay/
 ├── GamePlayPage.tsx                          — Route wrapper (ProjectShell + Outlet)
 ├── GamePlayOverviewPage.tsx                  — Overview/landing page
 └── gameplay-1/
-    ├── GamePlay1Page.tsx                     — 🧠 Main dashboard page (fullscreen + HUD)
+    ├── GamePlay1Page.tsx                     — 🧠 Main dashboard page (admin + fullscreen + HUD)
+    ├── types.ts                              — ProjectFile schema, RecentFile, constants
+    ├── utils/
+    │   └── projectManager.ts                 — collectProjectState / restoreProjectState / recent files
     └── components/
-        ├── GameHUD.tsx                       — Top menu bar (inventory, map, browser buttons)
-        ├── InventoryPanel.tsx                — 8-slot inventory grid (placeholder)
-        ├── MapPanel.tsx                      — Map placeholder
+        ├── GameHUD.tsx                       — Left sidebar menu (inventory, cost, gallery, browser)
+        ├── VideoSelector.tsx                 — Video file picker with preview + fallback props
+        ├── ProjectManager.tsx                — Save/Load/Recent files UI (.donis files)
+        ├── InventoryPanel.tsx                — Inventory grid (embedded in gameplay + admin)
+        ├── CostDisplay.tsx                   — Cost panel (embedded in gameplay HUD)
+        ├── GalleryDisplay.tsx                — Gallery panel (embedded in gameplay HUD)
         ├── BrowserPanel.tsx                  — URL bar + bookmarks + floating window launcher
-        ├── BrowserStream.tsx                 — SSE screenshot receiver (Puppeteer stream)
-        └── FloatingWindow.tsx               — Draggable + resizable window (createPortal)
+        ├── BrowserGatewayModal.tsx           — Browser gateway modal (before browser opens)
+        ├── FloatingWindow.tsx                — Draggable + resizable window (createPortal)
+        └── CropOverlay.tsx                   — Screenshot crop overlay (Snipping Tool style)
 ```
 
 ### `GamePlay1Page.tsx` — Main Dashboard
-- Fullscreen mode (`document.documentElement.requestFullscreen()`)
-- GameHUD menu bar with 3 items: Inventory, Map, Browser
-- Panel toggle (click same item to close)
-- Dark theme (bg-black, orange accent)
+- **Admin mode**: VideoSelector, ProjectManager, InventoryPanel, CostPanel, GalleryPanel
+- **Fullscreen mode**: Video background + GameHUD overlay + panel overlays
+- Video player with play/pause (Space), seek bar, time display
+- Auto-load video from saved path on mount/reload
+- Missing video warning banner if file not found
+- Project save/load via `.donis` files
+- Screenshot crop (DOM → canvas → clipboard)
+- Exit fullscreen confirmation modal
+
+### `VideoSelector.tsx` — Video File Picker
+- File picker for .mp4 from disk
+- Preview video player + file name + size
+- Fallback props (`fallbackName`, `fallbackSize`, `fallbackUrl`) — display after reload
+- Video path via `window.project.getFilePath(file)` → `webUtils.getPathForFile()`
+
+### `ProjectManager.tsx` — Project Save/Load
+- Save / Save As / Open / Recent files
+- `.donis` JSON files with `ProjectFile` schema
+- Persists `project-name` + `project-path` to localStorage
+- Modified indicator (`isModifiedRef`)
+- On load: `restoreProjectState()` → localStorage → `window.location.reload()`
+
+### `projectManager.ts` — State Collection/Restoration
+- `collectProjectState()` — read all localStorage → ProjectFile JSON
+- `restoreProjectState()` — write ProjectFile → localStorage
+- `getRecentFiles()`, `addRecentFile()`, `removeRecentFile()`, `clearRecentFiles()`
+- localStorage keys: `inventory-*`, `cost-*`, `gallery-*`, `project-video-*`, `project-name`, `project-path`
+
+### `types.ts` — ProjectFile Schema
+```
+ProjectFile {
+  version: 1
+  name, savedAt, createdAt
+  videoPath, videoName, videoSize, videoTime, isPlaying
+  inventory { items, history, checkedIds, customOrder, sortMode, bgColor }
+  cost { total, history, bgColor }
+  gallery { images[], checkedIds, bgColor }
+}
+GalleryImageSnapshot { id, title, path, size }
+```
 
 ### `BrowserPanel.tsx` — Browser Panel
 - URL input bar + Go button
 - Bookmarks: Bing, Bing Maps, Wikipedia, YouTube, Reddit
-- Opens `FloatingWindow` with `BrowserStream` child
-- Calls `/browser/close` on window close
-
-### `BrowserStream.tsx` — SSE Screenshot Receiver
-- `EventSource('/browser/stream')` — receives JPEG screenshots
-- Renders as `<img>` element
-- Click → POST `/browser/click` (coordinates scaled 1280×800)
-- Navigate → POST `/browser/navigate`
-- `prevUrlRef` + `navigatingRef` guards for race conditions
-- `onUrlChangeRef` stable callback (prevents infinite render loop)
+- Uses `window.browser` IPC API (WebContentsView in main process)
+- FloatingWindow for draggable/resizable window
 
 ### `FloatingWindow.tsx` — Draggable/Resizable Window
 - Drag by title bar, resize by bottom-right corner
 - 80% screen width/height default
 - `createPortal` to `document.body` (outside DOM hierarchy)
-- Accepts `children` (BrowserStream) or `url` (iframe)
 
-### `browserStreamPlugin.ts` — Puppeteer Streaming Server
-- Singleton session (`sessionPromise`) — prevents multiple Chromium instances
-- Chromium: `/snap/bin/chromium`, headless, 1280×800, JPEG quality 60
-- Endpoints:
-  - `GET /browser/stream` — SSE screenshots every 500ms
-  - `POST /browser/navigate` — navigate to URL
-  - `POST /browser/click` — click at coordinates
-  - `POST /browser/scroll` — scroll up/down
-  - `POST /browser/type` — type text
-  - `POST /browser/key` — press key
-  - `POST /browser/close` — close browser session
-- Auto-cleanup on server close
-
-### `vite.config.ts` — Plugins
-- `proxyPlugin()` — iframe proxy (v1, still present): fetch URL, strip headers, inject `<base>` + intercept script
-- `browserStreamPlugin()` — Puppeteer streaming (v2, current)
-- `process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'` — SSL cert bypass (dev only)
+### Removed (Superseded)
+- ~~`BrowserStream.tsx`~~ — SSE screenshot receiver (Puppeteer) — deleted
+- ~~`browserStreamPlugin.ts`~~ — Puppeteer streaming server — deleted
+- ~~`vite.config.ts`~~ — replaced by `electron.vite.config.ts`
+- ~~`proxyPlugin`~~ — iframe proxy — removed
 
 ---
 
@@ -201,17 +230,22 @@ src/projects/gameplay/
 - `components/MultiStateBadge.tsx` — Badge component
 - Uses `motion` (v12) — `motion/react`, `AnimatePresence`, `useTime`, `useTransform`
 
-### Inventory (`src/projects/inventory/`)
+### Inventory (`src/renderer/projects/inventory/`)
 - `InventoryPage.tsx` + `InventoryOverviewPage.tsx`
 - `project-1/` — items, types, InventoryPanel, useSounds hook
+- **Sort mode persistence** — `inventory-sort-mode` in localStorage + project file
 
-### Gallery (`src/projects/gallery/`)
+### Gallery (`src/renderer/projects/gallery/`)
 - `GalleryPage.tsx` + `GalleryOverviewPage.tsx`
-- `gallery-1/` — items, Gallery1Page, GalleryPanel, useSounds hook
+- `gallery-1/` — Gallery1Page, GalleryPanel, GallerySelector, useSounds hook
+- **Custom image upload** — GallerySelector with multi-file picker, list view, checkboxes, reorder
+- **No static images** — 100% user-uploaded (Pixabay defaults removed)
+- Images persisted in `.donis` project file (`gallery.images[]`)
 
-### Cost (`src/projects/cost/`)
+### Cost (`src/renderer/projects/cost/`)
 - `CostPage.tsx` + `CostOverviewPage.tsx`
 - `project-1/` — items, types, CostPanel, useSounds hook
+- **Project file integration** — `cost.total`, `cost.history`, `cost.bgColor` saved in `.donis`
 
 ### Motion Close Page (`src/projects/motion-close-page/`)
 - `MotionClosePage.tsx` — Close page animation
