@@ -62,12 +62,10 @@ export function BrowserGatewayModal({ onOpenBrowser, onClose }: Props) {
 
   return (
     <div
-      className={`absolute inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-      onClick={handleClose}
+      className={`absolute inset-0 z-40 flex items-center justify-center ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        className={`w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl backdrop-blur-2xl ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+        className={`w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-900/95 p-6 shadow-2xl backdrop-blur-2xl ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">🌐 Browser</h2>

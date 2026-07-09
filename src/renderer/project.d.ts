@@ -14,8 +14,25 @@ export interface ProjectApi {
   getFilePath: (file: File) => string
 }
 
+// ─── GIF Recorder API (exposed via preload contextBridge) ───────
+export interface GifRecorderApi {
+  /** Native save dialog for GIF — returns chosen file path or null */
+  saveDialog: (defaultName?: string) => Promise<string | null>
+  /** Write binary GIF data to file path */
+  saveFile: (filePath: string, data: Uint8Array) => Promise<boolean>
+  /** Get desktopCapturer window source ID for screen capture */
+  getSource: () => Promise<string | null>
+  /** Native save dialog for WebM — returns chosen file path or null */
+  saveDialogWebm: (defaultName?: string) => Promise<string | null>
+  /** Save binary data to OS temp dir, returns file path */
+  saveTemp: (data: Uint8Array) => Promise<string | null>
+  /** Merge separate video + audio WebM files into outputPath via FFmpeg */
+  mergeWebm: (videoPath: string, audioPath: string, outputPath: string) => Promise<boolean>
+}
+
 declare global {
   interface Window {
     project: ProjectApi
+    gifRecorder: GifRecorderApi
   }
 }

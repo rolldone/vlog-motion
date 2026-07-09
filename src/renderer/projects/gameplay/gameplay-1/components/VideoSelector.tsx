@@ -17,6 +17,9 @@ type VideoSelectorProps = {
 
 // ─── Chroma key colors — standar yang disetujui CapCut ───
 const CHROMA_COLORS = [
+  { name: 'White', hex: '#ffffff', desc: 'Chroma White' },
+  { name: 'Gray', hex: '#20201f', desc: 'Chroma Gray' },
+  { name: 'Grey', hex: '#808080', desc: 'Chroma Grey' },
   { name: 'Green', hex: '#00ff00', desc: 'Chroma Green' },
   { name: 'Blue', hex: '#0000ff', desc: 'Chroma Blue' },
   { name: 'Red', hex: '#ff0000', desc: 'Chroma Red' },
@@ -158,13 +161,21 @@ export function VideoSelector({ onSelect, initialFile, fallbackName, fallbackSiz
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Latar Kontras (Chroma Key)</p>
           <p className="mt-1 text-xs text-slate-400">Pilih warna latar untuk greenscreen — kompatibel CapCut</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {/* None / Black */}
+            {/* None / Black (default) */}
             <button
               onClick={() => onChromaBgColorChange?.(null)}
               className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition ${!chromaBgColor ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:border-slate-300'}`}
             >
               <span className="h-8 w-8 rounded-lg border border-slate-300 bg-black" />
-              <span className="text-[10px] font-medium text-slate-600">Black</span>
+              <span className="text-[10px] font-medium text-slate-600">No Color</span>
+            </button>
+            {/* Transparent */}
+            <button
+              onClick={() => onChromaBgColorChange?.('transparent')}
+              className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition ${chromaBgColor === 'transparent' ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:border-slate-300'}`}
+            >
+              <span className="h-8 w-8 rounded-lg border border-slate-300" style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '8px 8px', backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0' }} />
+              <span className="text-[10px] font-medium text-slate-600">Transparent</span>
             </button>
             {CHROMA_COLORS.map((c) => (
               <button

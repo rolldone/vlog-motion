@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, WebContentsView, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, WebContentsView, dialog, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { writeFileSync, readFileSync, existsSync } from 'fs'
 
@@ -289,6 +289,108 @@ function registerIpc() {
       return existsSync(filePath)
     } catch {
       return false
+    }
+  })
+
+  // ─── GIF save dialog ───
+  ipcMain.handle('gif:save-dialog', async (_e, defaultName?: string) => {
+    if (!mainWindow) return null
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save GIF Recording',
+      defaultPath: defaultName || `gameplay-${Date.now()}.gif`,
+      filters: [{ name: 'Animated GIF', extensions: ['gif'] }],
+    })
+    return result.canceled ? null : result.filePath
+  })
+
+  ipcMain.handle('gif:save-file', (_e, filePath: string, data: Uint8Array) => {
+    try {
+      writeFileSync(filePath, data)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  // ─── WebM save dialog ───
+  ipcMain.handle('webm:save-dialog', async (_e, defaultName?: string) => {
+    if (!mainWindow) return null
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save WebM Recording',
+      defaultPath: defaultName || `gameplay-${Date.now()}.webm`,
+      filters: [{ name: 'WebM Video', extensions: ['webm'] }],
+    })
+    return result.canceled ? null : result.filePath
+  })
+
+  // ─── Save temp file in OS temp dir, returns path ───
+  ipcMain.handle('webm:save-temp', (_e, data: Uint8Array) => {
+    try {
+      const path = join(app.getPath('temp'), `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.webm`)
+      writeFileSync(path, data)
+      console.log('[webm:save-temp] saved to', path)
+      return path
+    } catch (err) {
+      console.error('[webm:save-temp] error:', err)
+      return null
+    }
+  })
+
+  // ─── FFmpeg merge: combine separate video + audio WebM → outputPath ───
+  ipcMain.handle('webm:merge', async (_e, videoPath: string, audioPath: string, outputPath: string) => {
+    try {
+      const fs = require('fs')
+
+      // Find ffmpeg: check common locations first, fallback to shell PATH
+      let ffmpegCmd = 'ffmpeg'
+      const candidates = [
+        join(__dirname, '../ffmpeg.exe'),
+        join(__dirname, '../../ffmpeg.exe'),
+        join(process.resourcesPath || '', 'ffmpeg.exe'),
+      ]
+      for (const c of candidates) {
+        try { if (require('fs').existsSync(c)) { ffmpegCmd = c; break } } catch {}
+      }
+      console.log('[ffmpeg] using:', ffmpegCmd)
+
+      return await new Promise<boolean>((resolve) => {
+        // Use exec (shell) so PATH is resolved from user's environment
+        const { exec } = require('child_process')
+        const cmdStr = `"${ffmpegCmd}" -i "${videoPath}" -i "${audioPath}" -c:v copy -c:a libopus -map 0:v:0 -map 1:a:0 -fflags +genpts -async 1 -vsync 1 -shortest -y "${outputPath}"`
+
+        exec(cmdStr, { timeout: 120_000 }, (err: Error | null) => {
+          if (err) {
+            console.error('[webm:merge] ffmpeg error:', err.message)
+            resolve(false)
+          } else {
+            console.log('[webm:merge] done →', outputPath)
+            resolve(true)
+          }
+          // Cleanup temp input files
+          try { fs.unlinkSync(videoPath) } catch {}
+          try { fs.unlinkSync(audioPath) } catch {}
+        })
+      })
+    } catch (err) {
+      console.error('[webm:merge] error:', err)
+      return false
+    }
+  })
+
+  // ─── desktopCapturer: get window source ID for screen capture ───
+  ipcMain.handle('gif:get-source', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['window'],
+        thumbnailSize: { width: 1, height: 1 }, // minimal thumbnail
+        fetchWindowIcons: false,
+      })
+      // Find our own window by title
+      const ourWindow = sources.find((s) => s.name === mainWindow?.getTitle()) || sources[0]
+      return ourWindow?.id || null
+    } catch (err) {
+      console.error('[gif:get-source] error:', err)
+      return null
     }
   })
 }

@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
-const TAB_BAR_HEIGHT = 40 // tabs live in top bar like Chrome/Edge
-const ADDRESS_BAR_HEIGHT = 40
+const HEADER_OFFSET_ESTIMATE = 96 // fallback estimate ~48+48px
 
 interface TabInfo {
   id: string
@@ -61,6 +60,8 @@ export function FloatingWindow({
   onBookmarkClick,
 }: FloatingWindowProps) {
   const urlInputRef = useRef<HTMLInputElement>(null)
+  const tabBarRef = useRef<HTMLDivElement>(null)
+  const addressBarRef = useRef<HTMLDivElement>(null)
 
   // ─── Auto-focus URL input on new tab ───
   useEffect(() => {
@@ -82,11 +83,14 @@ export function FloatingWindow({
 
   // ─── Send content-area bounds to main process (WebContentsView) ───
   const sendBounds = useCallback(() => {
+    const tabH = tabBarRef.current?.offsetHeight ?? 48
+    const addrH = addressBarRef.current?.offsetHeight ?? 48
+    const headerH = tabH + addrH
     const bounds = {
       x: pos.x,
-      y: pos.y + TAB_BAR_HEIGHT + ADDRESS_BAR_HEIGHT,
+      y: pos.y + headerH,
       width: size.w,
-      height: size.h - TAB_BAR_HEIGHT - ADDRESS_BAR_HEIGHT,
+      height: size.h - headerH,
     }
     onBoundsChange?.(bounds)
   }, [pos, size, onBoundsChange])
@@ -147,19 +151,21 @@ export function FloatingWindow({
     >
       {/* Tab bar — also acts as title bar (draggable), like modern Chrome/Edge */}
       <div
+        ref={tabBarRef}
         onMouseDown={handleDragStart}
-        className="flex cursor-grab items-center gap-1 overflow-x-auto bg-white/5 px-2 active:cursor-grabbing"
-        style={{ height: TAB_BAR_HEIGHT }}
+        className="flex cursor-grab items-center gap-1 overflow-x-auto bg-zinc-800 px-2 pt-1 pb-0.5 active:cursor-grabbing"
+        style={{ height: 'auto' }}
       >
         {tabs.map((tab) => (
           <div
             key={tab.id}
             onClick={() => onSwitchTab(tab.id)}
-            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-t-md px-3 py-1 text-xs transition ${
+            className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 text-xs transition ${
               tab.id === activeTabId
                 ? 'bg-white/15 text-white'
                 : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80'
             }`}
+            style={{ height: '100%' }}
           >
             <span className="max-w-[120px] truncate">{truncate(tab.title, 20)}</span>
             <button
@@ -196,8 +202,9 @@ export function FloatingWindow({
 
       {/* Address bar — ← → ⟳ | URL input | Go (all inline like real browser) */}
       <div
-        className="flex items-center gap-1.5 bg-white/5 px-2"
-        style={{ height: ADDRESS_BAR_HEIGHT }}
+        ref={addressBarRef}
+        className="flex items-center gap-1.5 bg-zinc-800 px-2 pb-1"
+        style={{ height: 49 }}
       >
         <button
           onClick={onBack}
@@ -254,8 +261,8 @@ export function FloatingWindow({
         </>
       )}
 
-      {/* Content area — transparent (WebContentsView renders behind) + bookmark new-tab page */}
-      <div className="relative flex-1" style={{ minHeight: 0, pointerEvents: 'auto' }}>
+      {/* Content area — black background (WebContentsView renders behind) + bookmark new-tab page */}
+      <div className="relative flex-1 bg-black" style={{ minHeight: 0, pointerEvents: 'auto' }}>
         {/* Bookmark grid — only shown when active tab has no URL (blank new-tab page) */}
         {activeTabId && tabs.find((t) => t.id === activeTabId)?.url === '' && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 backdrop-blur-sm" style={{ pointerEvents: 'auto' }}>

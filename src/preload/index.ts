@@ -69,11 +69,24 @@ const projectApi = {
   getFilePath: (file: File) => webUtils.getPathForFile(file),
 }
 
+// ─── GIF Recorder API ─────────────────────────────────────────
+const gifApi = {
+  saveDialog: (defaultName?: string) => ipcRenderer.invoke('gif:save-dialog', defaultName) as Promise<string | null>,
+  saveFile: (filePath: string, data: Uint8Array) => ipcRenderer.invoke('gif:save-file', filePath, data) as Promise<boolean>,
+  getSource: () => ipcRenderer.invoke('gif:get-source') as Promise<string | null>,
+  saveDialogWebm: (defaultName?: string) => ipcRenderer.invoke('webm:save-dialog', defaultName) as Promise<string | null>,
+  /** Save binary data to OS temp dir, returns file path */
+  saveTemp: (data: Uint8Array) => ipcRenderer.invoke('webm:save-temp', data) as Promise<string | null>,
+  /** Merge separate video + audio WebM files into outputPath via FFmpeg */
+  mergeWebm: (videoPath: string, audioPath: string, outputPath: string) => ipcRenderer.invoke('webm:merge', videoPath, audioPath, outputPath) as Promise<boolean>,
+}
+
 // ─── Expose to renderer ─────────────────────────────────────────
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('browser', browserApi)
     contextBridge.exposeInMainWorld('project', projectApi)
+    contextBridge.exposeInMainWorld('gifRecorder', gifApi)
   } catch (error) {
     console.error(error)
   }
