@@ -5,6 +5,7 @@ import { ActorMovementOverviewPage } from './projects/actor-movement-map/ActorMo
 import { Project1Page } from './projects/actor-movement-map/project-1/Project1Page'
 import { Project2Page } from './projects/actor-movement-map/project-2/Project2Page'
 import { Project3Page } from './projects/actor-movement-map/project-3/Project3Page'
+import { Project4Page } from './projects/actor-movement-map/project-4/Project4Page'
 import { MotionClosePage } from './projects/motion-close-page/MotionClosePage'
 import { InventoryPage } from './projects/inventory/InventoryPage'
 import { InventoryOverviewPage } from './projects/inventory/InventoryOverviewPage'
@@ -31,6 +32,7 @@ function App() {
         <Route path="project-1" element={<Project1Page />} />
         <Route path="project-2" element={<Project2Page />} />
         <Route path="project-3" element={<Project3Page />} />
+        <Route path="project-4" element={<Project4Page />} />
       </Route>
       <Route path="/projects/motion-intro-menu" element={<MotionIntroMenuPage />}>
         <Route index element={<MotionIntroOverviewPage />} />

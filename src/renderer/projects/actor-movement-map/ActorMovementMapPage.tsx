@@ -17,6 +17,11 @@ const menuItems = [
     detail: 'Percobaan 3: animasi perpindahan actor.',
     href: 'project-3',
   },
+  {
+    label: 'Project 4',
+    detail: 'Percobaan 4: route progression (GPX/GeoJSON + turfjs + mapbox).',
+    href: 'project-4',
+  },
 ]
 
 export function ActorMovementMapPage() {
