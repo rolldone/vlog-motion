@@ -22,6 +22,7 @@ import { PanelOverlay } from './components/PanelOverlay'
 import { QuickActionModal } from './components/QuickActionModal'
 import { QuickActionSettings } from './components/QuickActionSettings'
 import { RecordingHUD } from './components/RecordingHUD'
+import { MapAdminPage } from '../../actor-movement-map/project-4/MapAdminPage'
 
 // ─── Helper: recursively copy computed styles from source → clone ───
 function inlineStyles(source: Element, clone: Element) {
@@ -38,6 +39,7 @@ const MENU_ITEMS = [
   { id: 'inventory', icon: '🎒', label: 'Inventory' },
   { id: 'cost', icon: '💰', label: 'Cost' },
   { id: 'gallery', icon: '🖼️', label: 'Gallery' },
+  { id: 'map', icon: '🗺️', label: 'Map' },
   { id: 'browser', icon: '🌐', label: 'Browser' },
 ]
 
@@ -104,11 +106,6 @@ export function GamePlay1Page() {
       delete (window as any).__audioMixer
     }
   }, [audioMixer])
-
-  // ─── OBS clean mode — matikan semua blur & shadow ───
-  const [obsMode, setObsMode] = useState(() => {
-    return localStorage.getItem('obs-mode') === 'true'
-  })
 
   // ─── Quick actions — overlay carousel di fullscreen ───
   const [showQuickActions, setShowQuickActions] = useState(false)
@@ -189,6 +186,9 @@ export function GamePlay1Page() {
   useEffect(() => {
     localStorage.setItem('hit-damage-settings', JSON.stringify(hitSettings))
   }, [hitSettings])
+
+  // ─── Admin tabs ───
+  const [adminTab, setAdminTab] = useState<string>('video')
 
   // ─── Auto-load video dari saved path pas mount / reload ───
   useEffect(() => {
@@ -321,14 +321,23 @@ export function GamePlay1Page() {
     }
   }, [])
 
+  // ─── SFX Volume ───
+  const [sfxVolume, setSfxVolume] = useState(() => {
+    const saved = localStorage.getItem('sfx-volume')
+    return saved ? Number(saved) : 0.7
+  })
+  useEffect(() => {
+    localStorage.setItem('sfx-volume', String(sfxVolume))
+  }, [sfxVolume])
+
   // ─── Sound FX ───
   const playOpenSound = useCallback(() => {
-    audioMixer.playBuffer('/sound/page-flip.mp3', { playbackRate: 2.0, volume: 0.7 })
-  }, [audioMixer])
+    audioMixer.playBuffer('/sound/page-flip.mp3', { playbackRate: 2.0, volume: sfxVolume })
+  }, [audioMixer, sfxVolume])
 
   const playCloseSound = useCallback(() => {
-    audioMixer.playBuffer('/sound/book-close.mp3', { playbackRate: 2.0, volume: 0.7 })
-  }, [audioMixer])
+    audioMixer.playBuffer('/sound/book-close.mp3', { playbackRate: 2.0, volume: sfxVolume })
+  }, [audioMixer, sfxVolume])
 
   const doClose = useCallback(() => {
     playCloseSound()
@@ -346,21 +355,34 @@ export function GamePlay1Page() {
 
   const handleMenuSelect = useCallback((id: string) => {
     recorder.recordEvent({ type: 'hud-select', panelId: id })
+
+    // Hide sidebar dulu — baru panel muncul setelah delay 300ms
+    setSidebarHovered(false)
+
     if (id === 'browser') {
       setActivePanel(null)
-      playOpenSound()
-      setShowBrowserGate(true)
-    } else {
-      setActivePanel((prev) => {
-        if (prev === id) {
-          doClose()
-          return prev // keep id agar animasi fade-out bisa jalan
-        }
+      // Browser: gate muncul setelah sidebar selesai hide
+      setTimeout(() => {
         playOpenSound()
-        return id
-      })
+        setShowBrowserGate(true)
+      }, 1000)
+      return
     }
-  }, [recorder, doClose, playOpenSound])
+
+    // Non-browser panel
+    const isSamePanel = activePanel === id
+    if (isSamePanel) {
+      // Toggle close — langsung, tanpa delay
+      doClose()
+      return
+    }
+
+    // Open panel baru — tunggu sidebar hide dulu
+    setTimeout(() => {
+      playOpenSound()
+      setActivePanel(id)
+    }, 1000)
+  }, [recorder, doClose, playOpenSound, activePanel])
 
   const handleVideoSelect = useCallback((file: File | null) => {
     setVideoFile(file)
@@ -556,9 +578,11 @@ export function GamePlay1Page() {
     const handler = () => {
       const isNowFullscreen = !!document.fullscreenElement
       setIsFullscreen(isNowFullscreen)
-      // Kalau user tekan Esc (keluar fullscreen) — tanya dulu
-      if (!isNowFullscreen) {
-        // Simpan session time video terakhir
+      if (isNowFullscreen) {
+        // Reset exit confirm ketika masuk fullscreen
+        setShowExitConfirm(false)
+      } else {
+        // Keluar fullscreen — simpan session time + tanya konfirmasi
         const currentTime = videoRef.current?.currentTime ?? 0
         const sessionTime = videoUrl ? currentTime : 0
         localStorage.setItem('project-video-session-time', String(sessionTime))
@@ -649,15 +673,7 @@ export function GamePlay1Page() {
       {isFullscreen ? (
         /* ─── Fullscreen mode ─── */
         <>
-        <div id="gameplay-fullscreen" className={`fixed inset-0 z-50 cursor-crosshair text-white ${obsMode ? 'obs-clean' : ''}`} style={{ backgroundColor: !videoVisible ? (chromaBgColor === 'transparent' ? 'transparent' : (chromaBgColor || '#000000')) : '#000000' }}>
-
-          {/* Exit fullscreen confirm modal */}
-          {showExitConfirm && (
-            <ExitConfirmModal
-              onConfirm={handleConfirmExit}
-              onCancel={handleCancelExit}
-            />
-          )}
+        <div id="gameplay-fullscreen" className="fixed inset-0 z-50 cursor-crosshair text-white" style={{ backgroundColor: !videoVisible ? (chromaBgColor === 'transparent' ? 'transparent' : (chromaBgColor || '#000000')) : '#000000' }}>
 
           {/* Video player — edge-to-edge fullscreen */}
           <div ref={gameplayRef} className="absolute inset-0 flex items-center justify-center">
@@ -875,85 +891,108 @@ export function GamePlay1Page() {
           {/* Quick actions settings */}
           <QuickActionSettings />
 
-          {/* Disable blur & shadow — toggle untuk rekaman bersih */}
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+          {/* SFX Volume — slider untuk suara panel */}
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🎬</span>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Disable blur & shadow</p>
-                <p className="text-[11px] text-slate-400">Matikan semua blur & shadow saat fullscreen</p>
+              <span className="text-2xl">🔊</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-800">SFX Volume</p>
+                <p className="text-[11px] text-slate-400">Suara buka/tutup panel</p>
               </div>
-            </div>
-            <label className="relative inline-flex cursor-pointer items-center">
+              <span className="w-8 text-right text-sm font-bold text-orange-500">
+                {Math.round(sfxVolume * 100)}%
+              </span>
               <input
-                type="checkbox"
-                checked={obsMode}
-                onChange={(e) => {
-                  setObsMode(e.target.checked)
-                  localStorage.setItem('obs-mode', String(e.target.checked))
-                }}
-                className="peer sr-only"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={sfxVolume}
+                onChange={(e) => setSfxVolume(Number(e.target.value))}
+                className="w-24 h-1.5 cursor-pointer appearance-none rounded-full bg-slate-200 accent-orange-500
+                  [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none
+                  [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-orange-500"
               />
-              <div className="h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-green-500 peer-focus:ring-2 peer-focus:ring-green-300" />
-              <div className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5" />
-            </label>
-          </div>
-
-          {/* VFX / Hit Damage — its own section */}
-          <HitDamageControlPanel
-            hitSettings={hitSettings}
-            onSettingsChange={setHitSettings}
-            onTestHit={triggerHit}
-          />
-
-          {/* Video Source */}
-          <VideoSelector
-            onSelect={handleVideoSelect}
-            initialFile={videoFile}
-            fallbackName={videoName}
-            fallbackSize={videoSize}
-            fallbackUrl={videoUrl}
-            videoVisible={videoVisible}
-            onToggleVideoVisible={(v) => {
-              setVideoVisible(v)
-              localStorage.setItem('video-visible', String(v))
-            }}
-            chromaBgColor={chromaBgColor}
-            onChromaBgColorChange={(c) => {
-              setChromaBgColor(c)
-              if (c) localStorage.setItem('chroma-bg-color', c)
-              else localStorage.removeItem('chroma-bg-color')
-            }}
-          />
-
-          {/* Missing video warning */}
-          {videoMissing && videoName && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-center gap-2">
-              <span className="text-sm">⚠️</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-800">File video tidak ditemukan</p>
-                <p className="text-[10px] text-amber-600 truncate">
-                  {videoName}{videoSize ? ` (${videoSize})` : ''}
-                </p>
-              </div>
-              <span className="text-[10px] text-amber-400">Pilih ulang</span>
             </div>
-          )}
-
-          {/* Inventory Setup */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <InventoryPanel />
           </div>
 
-          {/* Cost Setup */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <CostPanel />
+          {/* ─── Admin Tabs ─── */}
+          <div className="rounded-xl border border-slate-200 bg-white">
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-200">
+              {[
+                { id: 'video', icon: '🎬', label: 'Video' },
+                { id: 'inventory', icon: '🎒', label: 'Inventory' },
+                { id: 'cost', icon: '💰', label: 'Cost' },
+                { id: 'gallery', icon: '🖼️', label: 'Gallery' },
+                { id: 'map', icon: '🗺️', label: 'Map' },
+                { id: 'vfx', icon: '💥', label: 'VFX' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setAdminTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold transition ${
+                    adminTab === tab.id
+                      ? 'border-b-2 border-orange-500 text-orange-600'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="p-4">
+              {adminTab === 'video' && (
+                <div className="space-y-3">
+                  <VideoSelector
+                    onSelect={handleVideoSelect}
+                    initialFile={videoFile}
+                    fallbackName={videoName}
+                    fallbackSize={videoSize}
+                    fallbackUrl={videoUrl}
+                    videoVisible={videoVisible}
+                    onToggleVideoVisible={(v) => {
+                      setVideoVisible(v)
+                      localStorage.setItem('video-visible', String(v))
+                    }}
+                    chromaBgColor={chromaBgColor}
+                    onChromaBgColorChange={(c) => {
+                      setChromaBgColor(c)
+                      if (c) localStorage.setItem('chroma-bg-color', c)
+                      else localStorage.removeItem('chroma-bg-color')
+                    }}
+                  />
+                  {videoMissing && videoName && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex items-center gap-2">
+                      <span className="text-sm">⚠️</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-800">File video tidak ditemukan</p>
+                        <p className="text-[10px] text-amber-600 truncate">
+                          {videoName}{videoSize ? ` (${videoSize})` : ''}
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-amber-400">Pilih ulang</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {adminTab === 'inventory' && <InventoryPanel />}
+              {adminTab === 'cost' && <CostPanel />}
+              {adminTab === 'gallery' && <GalleryPanel />}
+              {adminTab === 'map' && <MapAdminPage />}
+              {adminTab === 'vfx' && (
+                <HitDamageControlPanel
+                  hitSettings={hitSettings}
+                  onSettingsChange={setHitSettings}
+                  onTestHit={triggerHit}
+                />
+              )}
+            </div>
           </div>
 
-          {/* Gallery Setup */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <GalleryPanel />
-          </div>
           {/* Screenshot crop overlay — triggered from HUD toolbar or browser */}
           {cropDataUrl && (
             <CropOverlay
@@ -963,6 +1002,14 @@ export function GamePlay1Page() {
             />
           )}
         </div>
+      )}
+
+      {/* Exit fullscreen confirm modal — di luar ternary biar muncul pas admin mode juga */}
+      {showExitConfirm && (
+        <ExitConfirmModal
+          onConfirm={handleConfirmExit}
+          onCancel={handleCancelExit}
+        />
       )}
     </>
   )

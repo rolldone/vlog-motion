@@ -1,17 +1,14 @@
 /**
  * Mapbox Access Token
  *
- * Dapatkan token gratis di https://account.mapbox.com/
- * - Bikin akun → Dashboard → Create a token
- * - Pilih scope minimal: "Public scopes" (tilesets:read, styles:read, fonts:read)
- * - Copy token ke bawah
- *
- * ⚠️ Untuk production, jangan hardcode — gunakan environment variable.
- *    Contoh: process.env.MAPBOX_TOKEN atau file .env
+ * Diambil dari environment variable `VITE_MAPBOX_TOKEN` (via `.env` file).
+ * Isi di `.env` di root project:
+ *   VITE_MAPBOX_TOKEN=pk.ey...
  */
 
 export const MAPBOX_TOKEN: string =
-  (typeof process !== 'undefined' && (process.env as Record<string, string>)['MAPBOX_TOKEN']) ||
+  (typeof import.meta !== 'undefined' &&
+    (import.meta.env as Record<string, string>)['VITE_MAPBOX_TOKEN']) ||
   ''
 
 export const MAPBOX_STYLES = {
