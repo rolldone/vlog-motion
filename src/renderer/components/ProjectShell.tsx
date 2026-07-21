@@ -11,6 +11,7 @@ type ProjectShellProps = {
     detail: string
     href?: string
     active?: boolean
+    onClick?: () => void
   }>
   children: ReactNode
 }
@@ -73,7 +74,7 @@ export function ProjectShell({
                       {content}
                     </NavLink>
                   ) : (
-                    <div key={item.label} className={className} role="button" tabIndex={0}>
+                    <div key={item.label} className={className} role="button" tabIndex={0} onClick={item.onClick}>
                       {content}
                     </div>
                   )
